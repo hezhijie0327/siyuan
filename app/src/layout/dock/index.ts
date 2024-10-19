@@ -11,7 +11,6 @@ import {Graph} from "./Graph";
 import {Model} from "../Model";
 import {saveLayout, setPanelFocus} from "../util";
 import {getDockByType, resizeTabs} from "../tabUtil";
-import {Inbox} from "./Inbox";
 import {Protyle} from "../../protyle";
 import {Backlink} from "./Backlink";
 import {resetFloatDockSize} from "./util";
@@ -335,7 +334,7 @@ export class Dock {
                 let minSize = 227;
                 Array.from(this.layout.element.querySelectorAll(".file-tree")).find((item) => {
                     if (item.classList.contains("sy__backlink") || item.classList.contains("sy__graph")
-                        || item.classList.contains("sy__globalGraph") || item.classList.contains("sy__inbox")) {
+                        || item.classList.contains("sy__globalGraph")) {
                         if (!item.classList.contains("fn__none") && !hasClosestByClassName(item, "fn__none")) {
                             minSize = 320;
                             return true;
@@ -635,13 +634,6 @@ export class Dock {
                                     tab,
                                     blockId: editor?.protyle?.block?.rootID,
                                 }));
-                            }
-                        });
-                        break;
-                    case "inbox":
-                        tab = new Tab({
-                            callback: (tab: Tab) => {
-                                tab.addModel(new Inbox(this.app, tab));
                             }
                         });
                         break;
