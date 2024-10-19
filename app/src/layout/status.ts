@@ -91,6 +91,7 @@ export const initStatus = (isWindow = false) => {
                         ipcRenderer.send(Constants.SIYUAN_CMD, "openDevTools");
                     }
                 }).element);
+                /// #endif
                 const rect = target.getBoundingClientRect();
                 window.siyuan.menus.menu.popup({x: rect.right, y: rect.top, isLeft: true});
                 event.stopPropagation();
