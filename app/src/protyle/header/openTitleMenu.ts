@@ -117,6 +117,14 @@ export const openTitleMenu = (protyle: IProtyle, position: IPosition) => {
             }
         }).element);
         if (!window.siyuan.config.readonly) {
+            window.siyuan.menus.menu.append(new MenuItem({
+                id: "wechatReminder",
+                label: window.siyuan.languages.wechatReminder,
+                icon: "iconMp",
+                click() {
+                    openFileWechatNotify(protyle);
+                }
+            }).element);
             const riffCardMenu: IMenu[] = [{
                 id: "spaceRepetition",
                 iconHTML: "",
