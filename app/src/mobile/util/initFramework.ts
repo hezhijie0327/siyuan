@@ -122,6 +122,8 @@ export const initFramework = (app: App, isStart: boolean) => {
                     } else {
                         tag.update();
                     }
+                } else if (type === "sidebar-inbox-tab" && !inbox) {
+                    inbox = new Inbox(app, document.querySelector('#sidebar [data-type="sidebar-inbox"]'));
                 } else if (type === "sidebar-plugin-tab") {
                     if (!custom) {
                         tabPanelElement.innerHTML = `<div class="b3-list--empty">${window.siyuan.languages.emptyContent}</div>`;
