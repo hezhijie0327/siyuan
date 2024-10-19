@@ -8,7 +8,7 @@ import {
 import {getIconByType} from "../../editor/getIcon";
 import {enterBack, iframeMenu, setFold, tableMenu, videoMenu, zoomOut} from "../../menus/protyle";
 import {MenuItem} from "../../menus/Menu";
-import {copySubMenu, openAttr, openWechatNotify} from "../../menus/commonMenuItem";
+import {copySubMenu, openAttr} from "../../menus/commonMenuItem";
 import {
     copyPlainText,
     isInAndroid,
