@@ -43,7 +43,7 @@ func NewAppearance() *Appearance {
 		ThemeLight:          "daylight",
 		Icon:                "material",
 		CodeBlockThemeLight: "github",
-		CodeBlockThemeDark:  "base16/dracula",
+		CodeBlockThemeDark:  "github-dark-dimmed",
 		Lang:                "en_US",
 		CloseButtonBehavior: 0,
 		HideStatusBar:       false,

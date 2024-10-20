@@ -52,7 +52,7 @@ func NewSystem() *System {
 		Name:               util.GetDeviceName(),
 		KernelVersion:      util.Ver,
 		NetworkProxy:       &NetworkProxy{},
-		DownloadInstallPkg: true,
+		DownloadInstallPkg: false,
 	}
 }
 
