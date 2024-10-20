@@ -195,7 +195,7 @@ func SetBooted() {
 
 var (
 	HomeDir, _    = gulu.OS.Home()
-	WorkingDir, _ = os.Getwd()
+	WorkingDir, _ = '/opt/siyuan'
 
 	WorkspaceDir       string        // 工作空间目录路径
 	WorkspaceName      string        // 工作空间名称
