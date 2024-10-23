@@ -26,11 +26,10 @@ export const about = {
     <div class="fn__flex-1">
         ${window.siyuan.languages.currentVer} v${Constants.SIYUAN_VERSION}
         <span id="isInsider"></span>
-        <div class="b3-label__text">${window.siyuan.languages.downloadLatestVer}</div>
     </div>
     <div class="fn__space"></div>
     <div class="fn__flex-center fn__size200 config__item-line">
-        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block">
+        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block" disabled>
             <svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}
         </button>
     </div>
