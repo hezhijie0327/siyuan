@@ -54,6 +54,7 @@ func NewSystem() *System {
 		NetworkProxy:       &NetworkProxy{},
 		DisableGoogleAnalytics: true,
 		DownloadInstallPkg: false,
+		IsMicrosoftStore: true,
 	}
 }
 
