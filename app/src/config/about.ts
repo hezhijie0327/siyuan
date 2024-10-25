@@ -60,7 +60,7 @@ export const about = {
         <div class="b3-label__text">${window.siyuan.languages.googleAnalyticsTip}</div>
     </div>
     <div class="fn__space"></div>
-    <input class="b3-switch fn__flex-center" id="googleAnalytics" type="checkbox"${window.siyuan.config.system.disableGoogleAnalytics ? "" : " checked"}>
+    <input class="b3-switch fn__flex-center" id="googleAnalytics" type="checkbox"${window.siyuan.config.system.disableGoogleAnalytics ? " checked" : ""}>
 </label>
 <label class="b3-label fn__flex">
     <div class="fn__flex-1">
