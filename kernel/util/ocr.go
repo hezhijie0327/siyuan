@@ -344,7 +344,7 @@ func getTesseractVer() (ret string) {
 	if err != nil {
 		if strings.Contains(err.Error(), "executable file not found") {
 			// macOS 端 Tesseract OCR 安装后不识别 https://github.com/siyuan-note/siyuan/issues/7107
-			TesseractBin = "/usr/bin/tesseract"
+			TesseractBin = "/usr/local/bin/tesseract"
 			cmd = exec.Command(TesseractBin, "--version")
 			gulu.CmdAttr(cmd)
 			data, err = cmd.CombinedOutput()
