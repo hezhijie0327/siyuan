@@ -41,6 +41,7 @@ import {focusBlock, getEditorRange} from "./util/selection";
 import {hasClosestBlock} from "./util/hasClosest";
 import {setStorageVal} from "./util/compatibility";
 import {merge} from "./util/merge";
+import {getAllModels} from "../layout/getAll";
 
 export class Protyle {
 
@@ -125,11 +126,20 @@ export class Protyle {
                             }
                             break;
                         case "transactions":
-                            data.data[0].doOperations.forEach((item: IOperation) => {
+                            data.data[0].doOperations.find((item: IOperation) => {
                                 if (!this.protyle.preview.element.classList.contains("fn__none") &&
                                     item.action !== "updateAttrs"   // 预览模式下点击只读
                                 ) {
                                     this.protyle.preview.render(this.protyle);
+                                } else if (options.backlinkData && ["delete", "move"].includes(item.action)) {
+                                    // 只对特定情况刷新，否则展开、编辑等操作刷新会频繁
+                                    getAllModels().backlink.find(backlinkItem => {
+                                        if (backlinkItem.element.contains(this.protyle.element)) {
+                                            backlinkItem.refresh();
+                                            return true;
+                                        }
+                                    });
+                                    return true;
                                 } else {
                                     onTransaction(this.protyle, item, false);
                                 }

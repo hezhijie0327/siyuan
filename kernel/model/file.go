@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -37,7 +38,6 @@ import (
 	"github.com/88250/lute/html"
 	"github.com/88250/lute/parse"
 	util2 "github.com/88250/lute/util"
-	jsoniter "github.com/json-iterator/go"
 	"github.com/siyuan-note/filelock"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/riff"
@@ -116,29 +116,9 @@ func (box *Box) docIAL(p string) (ret map[string]string) {
 	}
 
 	filePath := filepath.Join(util.DataDir, box.ID, p)
-
-	filelock.Lock(filePath)
-	file, err := os.Open(filePath)
-	if err != nil {
-		logging.LogErrorf("open file [%s] failed: %s", p, err)
-		filelock.Unlock(filePath)
-		return nil
-	}
-
-	iter := jsoniter.Parse(jsoniter.ConfigCompatibleWithStandardLibrary, file, 512)
-	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
-		if field == "Properties" {
-			iter.ReadVal(&ret)
-			break
-		} else {
-			iter.Skip()
-		}
-	}
-	file.Close()
-	filelock.Unlock(filePath)
-
+	ret = filesys.DocIAL(filePath)
 	if 1 > len(ret) {
-		logging.LogWarnf("properties not found in file [%s]", p)
+		logging.LogWarnf("properties not found in file [%s]", filePath)
 		box.moveCorruptedData(filePath)
 		return nil
 	}
@@ -1175,7 +1155,7 @@ func CreateDocByMd(boxID, p, title, md string, sorts []string) (tree *parse.Tree
 	return
 }
 
-func CreateWithMarkdown(tags, boxID, hPath, md, parentID, id string, withMath bool) (retID string, err error) {
+func CreateWithMarkdown(tags, boxID, hPath, md, parentID, id string, withMath bool, clippingHref string) (retID string, err error) {
 	createDocLock.Lock()
 	defer createDocLock.Unlock()
 
@@ -1191,6 +1171,16 @@ func CreateWithMarkdown(tags, boxID, hPath, md, parentID, id string, withMath bo
 		luteEngine.SetInlineMath(true)
 	}
 	luteEngine.SetHTMLTag2TextMark(true)
+	if strings.HasPrefix(clippingHref, "https://ld246.com/article/") || strings.HasPrefix(clippingHref, "https://liuyun.io/article/") {
+		// 改进链滴剪藏 https://github.com/siyuan-note/siyuan/issues/13117
+		luteEngine.SetInlineAsterisk(true)
+		luteEngine.SetInlineUnderscore(true)
+		luteEngine.SetSup(true)
+		luteEngine.SetSub(true)
+		luteEngine.SetTag(true)
+		luteEngine.SetInlineMath(true)
+		luteEngine.SetGFMStrikethrough(true)
+	}
 	dom := luteEngine.Md2BlockDOM(md, false)
 	retID, err = createDocsByHPath(box.ID, hPath, dom, parentID, id)
 
@@ -1472,11 +1462,11 @@ func MoveDocs(fromPaths []string, toBoxID, toPath string, callback interface{}) 
 
 func countSubDocs(box, p string) (ret int) {
 	p = strings.TrimSuffix(p, ".sy")
-	_ = filepath.Walk(filepath.Join(util.DataDir, box, p), func(path string, info os.FileInfo, err error) error {
+	_ = filelock.Walk(filepath.Join(util.DataDir, box, p), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 		if strings.HasSuffix(path, ".sy") {
@@ -1891,7 +1881,7 @@ func createDoc(boxID, p, title, dom string) (tree *parse.Tree, err error) {
 	updated := util.TimeFromID(id)
 	tree.Root.KramdownIAL = [][]string{{"id", id}, {"title", html.EscapeAttrVal(title)}, {"updated", updated}}
 	if nil == tree.Root.FirstChild {
-		tree.Root.AppendChild(treenode.NewParagraph())
+		tree.Root.AppendChild(treenode.NewParagraph(""))
 	}
 
 	// 如果段落块中仅包含一个 mp3/mp4 超链接，则将其转换为音视频块
@@ -2164,6 +2154,48 @@ func (box *Box) addMinSort(parentPath, id string) {
 	fullSortIDs[id] = sortVal
 
 	data, err = gulu.JSON.MarshalJSON(fullSortIDs)
+	if err != nil {
+		logging.LogErrorf("marshal sort conf failed: %s", err)
+		return
+	}
+	if err = filelock.WriteFile(confPath, data); err != nil {
+		logging.LogErrorf("write sort conf failed: %s", err)
+		return
+	}
+}
+
+func (box *Box) addSort(previousID, id string) {
+	confDir := filepath.Join(util.DataDir, box.ID, ".siyuan")
+	if err := os.MkdirAll(confDir, 0755); err != nil {
+		logging.LogErrorf("create conf dir failed: %s", err)
+		return
+	}
+	confPath := filepath.Join(confDir, "sort.json")
+	fullSortIDs := map[string]int{}
+	var data []byte
+	if filelock.IsExist(confPath) {
+		data, err := filelock.ReadFile(confPath)
+		if err != nil {
+			logging.LogErrorf("read sort conf failed: %s", err)
+			return
+		}
+
+		if err = gulu.JSON.UnmarshalJSON(data, &fullSortIDs); err != nil {
+			logging.LogErrorf("unmarshal sort conf failed: %s", err)
+		}
+	}
+
+	sortVal := 0
+	previousSortVal, ok := fullSortIDs[previousID]
+	if !ok {
+		sortVal++
+	} else {
+		sortVal = previousSortVal + 1
+	}
+
+	fullSortIDs[id] = sortVal
+
+	data, err := gulu.JSON.MarshalJSON(fullSortIDs)
 	if err != nil {
 		logging.LogErrorf("marshal sort conf failed: %s", err)
 		return

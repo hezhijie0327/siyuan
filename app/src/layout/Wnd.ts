@@ -50,6 +50,7 @@ import {fullscreen} from "../protyle/breadcrumb/action";
 import {setPadding} from "../protyle/ui/initUI";
 import {setPosition} from "../util/setPosition";
 import {clearOBG} from "./dock/util";
+import {recordBeforeResizeTop} from "../protyle/util/resize";
 
 export class Wnd {
     private app: App;
@@ -611,7 +612,7 @@ export class Wnd {
                 }
             } else if (!graphicElement) {
                 // 没有图标的文档
-                iconHTML = unicode2Emoji(Constants.SIYUAN_IMAGE_FILE, "b3-menu__icon", true);
+                iconHTML = unicode2Emoji(window.siyuan.storage[Constants.LOCAL_IMAGES].file, "b3-menu__icon", true);
             }
             window.siyuan.menus.menu.append(new MenuItem({
                 label: escapeHtml(item.querySelector(".item__text").textContent),
@@ -722,6 +723,7 @@ export class Wnd {
                     if (["bottom", "left", "right"].includes(this.parent.type)) {
                         item.panelElement.remove();
                     } else {
+                        recordBeforeResizeTop();
                         this.remove();
                     }
                     // 关闭分屏页签后光标消失
@@ -803,6 +805,7 @@ export class Wnd {
         webFrame.clearCache();
         ipcRenderer.send(Constants.SIYUAN_CMD, "clearCache");
         setTabPosition();
+        setModelsHash();
         /// #endif
     };
 

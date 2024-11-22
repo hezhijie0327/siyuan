@@ -44,7 +44,7 @@ import (
 var Mode = "prod"
 
 const (
-	Ver       = "3.1.10"
+	Ver       = "3.1.13"
 	IsInsider = false
 )
 
@@ -352,7 +352,7 @@ var (
 	AccessAuthCode string
 	Lang           = ""
 
-	Container        string // docker, android, ios, std
+	Container        string // docker, android, ios, harmony, std
 	ISMicrosoftStore bool   // 桌面端是否是微软商店版
 )
 
@@ -361,6 +361,7 @@ const (
 	ContainerDocker  = "docker"  // Docker 容器端
 	ContainerAndroid = "android" // Android 端
 	ContainerIOS     = "ios"     // iOS 端
+	ContainerHarmony = "harmony" // 鸿蒙端
 
 	LocalHost = "127.0.0.1" // 伺服地址
 	FixedPort = "6806"      // 固定端口
@@ -434,6 +435,9 @@ func initMime() {
 
 	// 文档数据文件
 	mime.AddExtensionType(".sy", "application/json")
+
+	mime.AddExtensionType(".md", "text/markdown")
+	mime.AddExtensionType(".markdown", "text/markdown")
 }
 
 func GetDataAssetsAbsPath() (ret string) {

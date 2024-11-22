@@ -19,6 +19,7 @@ import {hasClosestByClassName} from "../../protyle/util/hasClosest";
 import {App} from "../../index";
 import {Plugin} from "../../plugin";
 import {Custom} from "./Custom";
+import {recordBeforeResizeTop} from "../../protyle/util/resize";
 
 const TYPES = ["file", "outline", "bookmark", "tag", "graph", "globalGraph", "backlink"];
 
@@ -332,7 +333,7 @@ export class Dock {
                 } else {
                     currentNowSize = (currentSize + (x - moveEvent.clientY));
                 }
-                let minSize = 227;
+                let minSize = 232;
                 Array.from(this.layout.element.querySelectorAll(".file-tree")).find((item) => {
                     if (item.classList.contains("sy__backlink") || item.classList.contains("sy__graph")
                         || item.classList.contains("sy__globalGraph") || item.classList.contains("sy__inbox")) {
@@ -495,6 +496,7 @@ export class Dock {
         if (!type) {
             return;
         }
+        recordBeforeResizeTop();
         const target = this.element.querySelector(`[data-type="${type}"]`) as HTMLElement;
         if (show && target.classList.contains("dock__item--active")) {
             target.classList.remove("dock__item--active", "dock__item--activefocus");
@@ -534,8 +536,12 @@ export class Dock {
                 clearTimeout(this.hideResizeTimeout);
                 this.hideDock();
             }
-            if ((type === "graph" || type === "globalGraph") && this.layout.element.querySelector(".fullscreen")) {
-                document.getElementById("drag")?.classList.remove("fn__hidden");
+            if ((type === "graph" || type === "globalGraph")) {
+                if (this.layout.element.querySelector(".fullscreen")) {
+                    document.getElementById("drag")?.classList.remove("fn__hidden");
+                }
+                const graph = this.data[type] as Graph;
+                graph.destroy();
             }
             // 关闭 dock 后设置光标，初始化的时候不能设置，否则关闭文档树且多页签时会请求两次 getDoc
             if (isSaveLayout && !document.querySelector(".layout__center .layout__wnd--active")) {
@@ -543,7 +549,7 @@ export class Dock {
                 if (currentElement) {
                     getAllTabs().find(item => {
                         if (item.id === currentElement.getAttribute("data-id")) {
-                            item.parent.switchTab(item.headElement);
+                            item.parent.switchTab(item.headElement, false, true, false);
                             return true;
                         }
                     });
@@ -752,6 +758,10 @@ export class Dock {
         }
         resizeTabs(isSaveLayout);
         this.showDock();
+        if (target.classList.contains("dock__item--active") && !hide && (type === "graph" || type === "globalGraph")) {
+            const graph = this.data[type] as Graph;
+            graph.onGraph(false);
+        }
     }
 
     public add(index: number, sourceElement: Element, previousType?: string) {
@@ -794,7 +804,7 @@ export class Dock {
         saveLayout();
     }
 
-    public remove(key: TDock|string) {
+    public remove(key: TDock | string) {
         this.toggleModel(key, false, true, true);
         this.element.querySelector(`[data-type="${key}"]`).remove();
         const custom = this.data[key] as Custom;
@@ -809,12 +819,14 @@ export class Dock {
         activesElement.forEach((item) => {
             if (this.position === "Left" || this.position === "Right") {
                 if (item.getAttribute("data-index") === "1" && activesElement.length > 1) {
-                    item.setAttribute("data-height", (this.data[item.getAttribute("data-type") as TDock] as Model).parent.parent.element.clientHeight.toString());
+                    const dockElement = (this.data[item.getAttribute("data-type") as TDock] as Model).parent.parent.element;
+                    item.setAttribute("data-height", dockElement.style.height ? dockElement.clientHeight.toString() : "");
                 }
                 item.setAttribute("data-width", this.layout.element.clientWidth.toString());
             } else {
                 if (item.getAttribute("data-index") === "1" && activesElement.length > 1) {
-                    item.setAttribute("data-width", (this.data[item.getAttribute("data-type") as TDock] as Model).parent.parent.element.clientWidth.toString());
+                    const dockElement = (this.data[item.getAttribute("data-type") as TDock] as Model).parent.parent.element;
+                    item.setAttribute("data-width", dockElement.style.width ? dockElement.clientWidth.toString() : "");
                 }
                 item.setAttribute("data-height", this.layout.element.clientHeight.toString());
             }
@@ -826,9 +838,9 @@ export class Dock {
         this.element.querySelectorAll(".dock__item--active").forEach((item) => {
             let size;
             if (this.position === "Left" || this.position === "Right") {
-                size = parseInt(item.getAttribute("data-width")) || (["graph", "globalGraph", "backlink"].includes(item.getAttribute("data-type")) ? 320 : 227);
+                size = parseInt(item.getAttribute("data-width")) || (["graph", "globalGraph", "backlink"].includes(item.getAttribute("data-type")) ? 320 : 232);
             } else {
-                size = parseInt(item.getAttribute("data-height")) || 227;
+                size = parseInt(item.getAttribute("data-height")) || 232;
             }
             if (size > max) {
                 max = size;

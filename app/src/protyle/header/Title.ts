@@ -105,7 +105,8 @@ export class Title {
             if (event.key === "ArrowDown") {
                 const rects = getSelection().getRangeAt(0).getClientRects();
                 // https://github.com/siyuan-note/siyuan/issues/11729
-                if (this.editElement.getBoundingClientRect().bottom - rects[rects.length - 1].bottom < 25) {
+                if (rects.length === 0 // 标题为空时时
+                    || this.editElement.getBoundingClientRect().bottom - rects[rects.length - 1].bottom < 25) {
                     const noContainerElement = getNoContainerElement(protyle.wysiwyg.element.firstElementChild);
                     // https://github.com/siyuan-note/siyuan/issues/4923
                     if (noContainerElement) {
@@ -146,18 +147,6 @@ export class Title {
                 event.stopPropagation();
             } else if (matchHotKey("⌘A", event)) {
                 getEditorRange(this.editElement).selectNodeContents(this.editElement);
-                event.preventDefault();
-                event.stopPropagation();
-            } else if (matchHotKey(window.siyuan.config.keymap.editor.general.copyID.custom, event)) {
-                writeText(protyle.block.rootID);
-                event.preventDefault();
-                event.stopPropagation();
-            } else if (matchHotKey(window.siyuan.config.keymap.editor.general.copyBlockEmbed.custom, event)) {
-                writeText(`{{select * from blocks where id='${protyle.block.rootID}'}}`);
-                event.preventDefault();
-                event.stopPropagation();
-            } else if (matchHotKey(window.siyuan.config.keymap.editor.general.copyProtocol.custom, event)) {
-                writeText(`siyuan://blocks/${protyle.block.rootID}`);
                 event.preventDefault();
                 event.stopPropagation();
             }

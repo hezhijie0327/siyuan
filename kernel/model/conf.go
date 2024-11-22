@@ -134,7 +134,7 @@ func InitConf() {
 
 	if "" != util.Lang {
 		initialized := false
-		if util.ContainerAndroid == util.Container || util.ContainerIOS == util.Container {
+		if util.ContainerAndroid == util.Container || util.ContainerIOS == util.Container || util.ContainerHarmony == util.Container {
 			// 移动端以上次设置的外观语言为准
 			if "" != Conf.Lang && util.Lang != Conf.Lang {
 				util.Lang = Conf.Lang
@@ -307,6 +307,10 @@ func InitConf() {
 		Conf.System.ID = util.GetDeviceID()
 		Conf.System.Name = util.GetDeviceName()
 	}
+	Conf.System.DisabledFeatures = util.DisabledFeatures
+	if 1 > len(Conf.System.DisabledFeatures) {
+		Conf.System.DisabledFeatures = []string{}
+	}
 
 	if nil == Conf.Snippet {
 		Conf.Snippet = conf.NewSnpt()
@@ -339,7 +343,7 @@ func InitConf() {
 		Conf.Sync.Mode = 1
 	}
 	if nil == Conf.Sync.S3 {
-		Conf.Sync.S3 = &conf.S3{SkipTlsVerify: true}
+		Conf.Sync.S3 = &conf.S3{PathStyle: true, SkipTlsVerify: true}
 	}
 	Conf.Sync.S3.Endpoint = util.NormalizeEndpoint(Conf.Sync.S3.Endpoint)
 	Conf.Sync.S3.Timeout = util.NormalizeTimeout(Conf.Sync.S3.Timeout)
@@ -380,6 +384,12 @@ func InitConf() {
 	}
 	if 12000 > Conf.Repo.SyncIndexTiming {
 		Conf.Repo.SyncIndexTiming = 12 * 1000
+	}
+	if 1 > Conf.Repo.IndexRetentionDays {
+		Conf.Repo.IndexRetentionDays = 180
+	}
+	if 1 > Conf.Repo.RetentionIndexesDaily {
+		Conf.Repo.RetentionIndexesDaily = 2
 	}
 
 	if nil == Conf.Search {
@@ -475,7 +485,7 @@ func InitConf() {
 		// 上次未正常完成数据索引
 		go func() {
 			util.WaitForUILoaded()
-			if util.ContainerIOS == util.Container || util.ContainerAndroid == util.Container {
+			if util.ContainerIOS == util.Container || util.ContainerAndroid == util.Container || util.ContainerHarmony == util.Container {
 				task.AppendAsyncTaskWithDelay(task.PushMsg, 2*time.Second, util.PushMsg, Conf.language(245), 15000)
 			} else {
 				task.AppendAsyncTaskWithDelay(task.PushMsg, 2*time.Second, util.PushMsg, Conf.language(244), 15000)
