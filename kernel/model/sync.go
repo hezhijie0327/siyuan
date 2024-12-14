@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -293,7 +292,7 @@ func removeIndexes(removeFilePaths []string) (removeRootIDs []string) {
 			continue
 		}
 
-		id := strings.TrimSuffix(filepath.Base(removeFile), ".sy")
+		id := util.GetTreeID(removeFile)
 		removeRootIDs = append(removeRootIDs, id)
 		block := treenode.GetBlockTree(id)
 		if nil != block {
@@ -338,7 +337,7 @@ func upsertIndexes(upsertFilePaths []string) (upsertRootIDs []string) {
 
 		box := upsertFile[:idx]
 		p := strings.TrimPrefix(upsertFile, box)
-		msg := fmt.Sprintf(Conf.Language(40), strings.TrimSuffix(path.Base(p), ".sy"))
+		msg := fmt.Sprintf(Conf.Language(40), util.GetTreeID(p))
 		util.IncBootProgress(bootProgressPart, msg)
 		util.PushStatusBar(msg)
 
@@ -387,6 +386,20 @@ func SetSyncGenerateConflictDoc(b bool) {
 func SetSyncEnable(b bool) {
 	Conf.Sync.Enabled = b
 	Conf.Save()
+	return
+}
+
+func SetSyncInterval(interval int) {
+	if 30 > interval {
+		interval = 30
+	}
+	if 43200 < interval {
+		interval = 43200
+	}
+
+	Conf.Sync.Interval = interval
+	Conf.Save()
+	planSyncAfter(time.Duration(interval) * time.Second)
 	return
 }
 
@@ -470,7 +483,7 @@ func CreateCloudSyncDir(name string) (err error) {
 	}
 
 	name = strings.TrimSpace(name)
-	name = gulu.Str.RemoveInvisible(name)
+	name = util.RemoveInvalid(name)
 	if !cloud.IsValidCloudDirName(name) {
 		return errors.New(Conf.Language(37))
 	}
@@ -642,7 +655,7 @@ func getSyncIgnoreLines() (ret []string) {
 
 func IncSync() {
 	syncSameCount.Store(0)
-	planSyncAfter(30 * time.Second)
+	planSyncAfter(time.Duration(Conf.Sync.Interval) * time.Second)
 }
 
 func planSyncAfter(d time.Duration) {

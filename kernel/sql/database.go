@@ -1316,6 +1316,9 @@ func queryRow(query string, args ...interface{}) *sql.Row {
 		logging.LogErrorf("statement is empty")
 		return nil
 	}
+	if nil == db {
+		return nil
+	}
 	return db.QueryRow(query, args...)
 }
 
@@ -1323,6 +1326,9 @@ func query(query string, args ...interface{}) (*sql.Rows, error) {
 	query = strings.TrimSpace(query)
 	if "" == query {
 		return nil, errors.New("statement is empty")
+	}
+	if nil == db {
+		return nil, errors.New("database is nil")
 	}
 	return db.Query(query, args...)
 }
@@ -1505,6 +1511,10 @@ func SQLTemplateFuncs(templateFuncMap *template.FuncMap) {
 			stmt = strings.Replace(stmt, "?", arg, 1)
 		}
 		retSpans = SelectSpansRawStmt(stmt, 512)
+		return
+	}
+	(*templateFuncMap)["querySQL"] = func(stmt string) (ret []map[string]interface{}) {
+		ret, _ = Query(stmt, 1024)
 		return
 	}
 }

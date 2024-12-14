@@ -37,6 +37,13 @@ var (
 	UserAgent = "SiYuan/" + Ver
 )
 
+func GetTreeID(treePath string) string {
+	if strings.Contains(treePath, "\\") {
+		return strings.TrimSuffix(filepath.Base(treePath), ".sy")
+	}
+	return strings.TrimSuffix(path.Base(treePath), ".sy")
+}
+
 func ShortPathForBootingDisplay(p string) string {
 	if 25 > len(p) {
 		return p
@@ -49,7 +56,7 @@ func ShortPathForBootingDisplay(p string) string {
 var LocalIPs []string
 
 func GetLocalIPs() (ret []string) {
-	if ContainerAndroid == Container {
+	if ContainerAndroid == Container || ContainerHarmony == Container {
 		// Android 上用不了 net.InterfaceAddrs() https://github.com/golang/go/issues/40569，所以前面使用启动内核传入的参数 localIPs
 		LocalIPs = append(LocalIPs, LocalHost)
 		LocalIPs = gulu.Str.RemoveDuplicatedElem(LocalIPs)
@@ -262,7 +269,7 @@ func IsAssetLinkDest(dest []byte) bool {
 
 var (
 	SiYuanAssetsImage = []string{".apng", ".ico", ".cur", ".jpg", ".jpe", ".jpeg", ".jfif", ".pjp", ".pjpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".avif"}
-	SiYuanAssetsAudio = []string{".mp3", ".wav", ".ogg", ".m4a"}
+	SiYuanAssetsAudio = []string{".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 	SiYuanAssetsVideo = []string{".mov", ".weba", ".mkv", ".mp4", ".webm"}
 )
 
@@ -294,4 +301,8 @@ func GetAbsPathInWorkspace(relPath string) (string, error) {
 		return absPath, nil
 	}
 	return "", os.ErrPermission
+}
+
+func IsAbsPathInWorkspace(absPath string) bool {
+	return IsSubPath(WorkspaceDir, absPath)
 }

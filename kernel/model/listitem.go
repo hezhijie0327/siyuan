@@ -28,6 +28,8 @@ import (
 )
 
 func ListItem2Doc(srcListItemID, targetBoxID, targetPath, previousPath string) (srcRootBlockID, newTargetPath string, err error) {
+	FlushTxQueue()
+
 	srcTree, _ := LoadTreeByBlockID(srcListItemID)
 	if nil == srcTree {
 		err = ErrBlockNotFound
@@ -128,7 +130,7 @@ func ListItem2Doc(srcListItemID, targetBoxID, targetPath, previousPath string) (
 	newTree.Root.SetIALAttr("updated", util.CurrentTimeSecondsStr())
 	newTree.Root.Spec = "1"
 	if "" != previousPath {
-		box.addSort(strings.TrimSuffix(path.Base(previousPath), ".sy"), newTree.ID)
+		box.addSort(previousPath, newTree.ID)
 	} else {
 		box.addMinSort(path.Dir(newTargetPath), newTree.ID)
 	}

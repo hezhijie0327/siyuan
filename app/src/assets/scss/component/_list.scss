@@ -8,7 +8,7 @@
     border-radius: var(--b3-border-radius);
 
     &:hover:not(.b3-list-item--focus):not(.dragover):not(.dragover__top):not(.dragover__bottom),
-    &--focus:not(.dragover) {
+    &--focus:not(.dragover):not(.dragover__top):not(.dragover__bottom) {
       background-color: var(--b3-list-hover);
     }
   }
@@ -27,7 +27,7 @@
       position: relative;
     }
 
-    .b3-list__panel:before {
+    .b3-list__panel::before {
       content: "";
       height: 100%;
       top: 0;
@@ -125,7 +125,7 @@
       }
 
       text-align: center;
-      font-size: 16px;
+      font-size: 14px;
       font-family: var(--b3-font-family-emoji);
       margin-right: 4px;
       line-height: 22px;

@@ -21,6 +21,7 @@ type Sync struct {
 	Enabled             bool    `json:"enabled"`             // 是否开启同步
 	Perception          bool    `json:"perception"`          // 是否开启感知
 	Mode                int     `json:"mode"`                // 同步模式，0：未设置（为兼容已有配置，initConf 函数中会转换为 1），1：自动，2：手动 https://github.com/siyuan-note/siyuan/issues/5089，3：完全手动 https://github.com/siyuan-note/siyuan/issues/7295
+	Interval            int     `json:"interval"`            // 自动同步间隔，单位：秒
 	Synced              int64   `json:"synced"`              // 最近同步时间
 	Stat                string  `json:"stat"`                // 最近同步统计信息
 	GenerateConflictDoc bool    `json:"generateConflictDoc"` // 云端同步冲突时是否生成冲突文档
@@ -35,8 +36,9 @@ func NewSync() *Sync {
 		Enabled:             false,
 		Perception:          false,
 		Mode:                1,
-		GenerateConflictDoc: true,
+		GenerateConflictDoc: false,
 		Provider:            ProviderS3,
+		Interval:            30,
 	}
 }
 

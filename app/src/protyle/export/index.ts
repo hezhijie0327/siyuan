@@ -64,7 +64,7 @@ export const saveExport = (option: IExportOptions) => {
             wordDialog.destroy();
         });
     } else {
-        getExportPath(option);
+        getExportPath(option, false, true);
     }
     /// #endif
 };
@@ -318,6 +318,9 @@ const renderPDF = async (id: string) => {
             item.style.width = Math.min(item.clientWidth, width) + "px";
             item.removeAttribute('data-render');
         })
+        previewElement.querySelectorAll('[data-type="NodeCodeBlock"][data-subtype="mermaid"] svg').forEach((item) => {
+            item.style.maxHeight = width * 1.414 + "px";
+        })
         Protyle.mathRender(previewElement, "${servePath}/stage/protyle", true);
         previewElement.querySelectorAll("table").forEach(item => {
             if (item.clientWidth > item.parentElement.clientWidth) {
@@ -441,7 +444,8 @@ const renderPDF = async (id: string) => {
                     const linkAddress = target.getAttribute("href");
                     if (linkAddress.startsWith("#")) {
                         // 导出预览模式点击块引转换后的脚注跳转不正确 https://github.com/siyuan-note/siyuan/issues/5700
-                        previewElement.querySelector(linkAddress).scrollIntoView();
+                        const hash = linkAddress.substring(1);
+                        previewElement.querySelector('[data-node-id="' + hash + '"], [id="' + hash + '"]').scrollIntoView();
                         event.stopPropagation();
                         event.preventDefault();
                         return;

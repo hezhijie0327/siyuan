@@ -284,23 +284,19 @@ export const cellScrollIntoView = (blockElement: HTMLElement, cellElement: Eleme
     const cellRect = cellElement.getBoundingClientRect();
     if (!onlyHeight) {
         const avScrollElement = blockElement.querySelector(".av__scroll");
-        if (avScrollElement) {
-            const avScrollRect = avScrollElement.getBoundingClientRect();
-            if (avScrollRect.right < cellRect.right) {
-                avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.right - avScrollRect.right;
-            } else {
-                const rowElement = hasClosestByClassName(cellElement, "av__row");
-                if (rowElement) {
-                    const stickyElement = rowElement.querySelector(".av__colsticky");
-                    if (stickyElement) {
-                        if (!stickyElement.contains(cellElement)) { // https://github.com/siyuan-note/siyuan/issues/12162
-                            const stickyRight = stickyElement.getBoundingClientRect().right;
-                            if (stickyRight > cellRect.left) {
-                                avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.left - stickyRight;
-                            }
-                        }
-                    } else if (avScrollRect.left > cellRect.left) {
-                        avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.left - avScrollRect.left;
+        const rowElement = hasClosestByClassName(cellElement, "av__row");
+        if (avScrollElement && rowElement) {
+            const stickyElement = rowElement.querySelector(".av__colsticky");
+            if (!stickyElement.contains(cellElement)) { // https://github.com/siyuan-note/siyuan/issues/12162
+                const stickyRight = stickyElement.getBoundingClientRect().right;
+                const avScrollRect = avScrollElement.getBoundingClientRect();
+                if (stickyRight > cellRect.left || avScrollRect.right < cellRect.left) {
+                    avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.left - stickyRight;
+                } else if (stickyRight < cellRect.left && avScrollRect.right < cellRect.right) {
+                    if (cellRect.width + stickyRight > avScrollRect.right) {
+                        avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.left - stickyRight;
+                    } else {
+                        avScrollElement.scrollLeft = avScrollElement.scrollLeft + cellRect.right - avScrollRect.right;
                     }
                 }
             }
@@ -311,7 +307,6 @@ export const cellScrollIntoView = (blockElement: HTMLElement, cellElement: Eleme
     if (contentElement && cellElement.getAttribute("data-dtype") !== "checkbox") {
         const keyboardToolbarElement = document.getElementById("keyboardToolbar");
         const keyboardH = parseInt(keyboardToolbarElement.getAttribute("data-keyboardheight")) || (window.outerHeight / 2 - 42);
-        console.log(keyboardH, window.innerHeight, cellRect.bottom);
         if (cellRect.bottom > window.innerHeight - keyboardH - 42) {
             contentElement.scrollTop += cellRect.bottom - window.innerHeight + 42 + keyboardH;
         } else if (cellRect.top < 110) {
@@ -383,13 +378,18 @@ export const popTextCell = (protyle: IProtyle, cellElements: HTMLElement[], type
     cellRect = cellElements[0].getBoundingClientRect();
     let html = "";
     let height = cellRect.height;
+    let style;
     if (contentElement) {
         const contentRect = contentElement.getBoundingClientRect();
         if (cellRect.bottom > contentRect.bottom) {
             height = contentRect.bottom - cellRect.top;
         }
+        const width = Math.min(Math.max(cellRect.width, 25), contentRect.width);
+        style = `style="padding-top: 6.5px;position:absolute;left: ${(cellRect.left < contentRect.left || cellRect.left + width > contentRect.right) ? contentRect.left : cellRect.left}px;top: ${cellRect.top}px;width:${width}px;height: ${height}px"`;
+    } else {
+        style = `style="padding-top: 6.5px;position:absolute;left: ${cellRect.left}px;top: ${cellRect.top}px;width:${Math.max(cellRect.width, 25)}px;height: ${height}px"`;
     }
-    const style = `style="padding-top: 6.5px;position:absolute;left: ${cellRect.left}px;top: ${cellRect.top}px;width:${Math.max(cellRect.width, 25)}px;height: ${height}px"`;
+
     if (["text", "email", "phone", "block", "template"].includes(type)) {
         html = `<textarea ${style} spellcheck="false" class="b3-text-field">${cellElements[0].firstElementChild.textContent}</textarea>`;
     } else if (type === "url") {

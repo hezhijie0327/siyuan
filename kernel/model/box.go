@@ -398,7 +398,7 @@ type BoxInfo struct {
 func (box *Box) GetInfo() (ret *BoxInfo) {
 	ret = &BoxInfo{
 		ID:   box.ID,
-		Name: box.Name,
+		Name: util.EscapeHTML(box.Name),
 	}
 
 	fileInfos := box.ListFiles("/")
@@ -596,7 +596,7 @@ func normalizeTree(tree *parse.Tree) (yfmRootID, yfmTitle, yfmUpdated string) {
 					}
 					continue
 				}
-				if "tags" == attrK {
+				if "tags" == attrK && nil != attrV {
 					var tags string
 					if str, ok := attrV.(string); ok {
 						tags = strings.TrimSpace(str)
@@ -614,7 +614,10 @@ func normalizeTree(tree *parse.Tree) (yfmRootID, yfmTitle, yfmUpdated string) {
 						tags += tagStr + ","
 					}
 					tags = strings.TrimRight(tags, ",")
-					tree.Root.SetIALAttr("tags", tags)
+					tags = strings.TrimSpace(tags)
+					if "" != tags {
+						tree.Root.SetIALAttr("tags", tags)
+					}
 					continue
 				}
 
@@ -708,7 +711,7 @@ func getBoxesByPaths(paths []string) (ret map[string]*Box) {
 	ret = map[string]*Box{}
 	var ids []string
 	for _, p := range paths {
-		ids = append(ids, strings.TrimSuffix(path.Base(p), ".sy"))
+		ids = append(ids, util.GetTreeID(p))
 	}
 
 	bts := treenode.GetBlockTrees(ids)
