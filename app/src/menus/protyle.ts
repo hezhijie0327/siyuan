@@ -1129,35 +1129,6 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
             }).element);
         }
         window.siyuan.menus.menu.append(new MenuItem({
-            label: "OCR",
-            submenu: [{
-                iconHTML: "",
-                type: "readonly",
-                label: `<textarea spellcheck="false" data-type="ocr" style="margin: 4px 0" rows="1" class="b3-text-field fn__size200" placeholder="${window.siyuan.languages.ocrResult}"></textarea>`,
-                bind(element) {
-                    element.style.maxWidth = "none";
-                    fetchPost("/api/asset/getImageOCRText", {
-                        path: imgElement.getAttribute("src")
-                    }, (response) => {
-                        const textarea = element.querySelector("textarea");
-                        textarea.value = response.data.text;
-                        textarea.dataset.ocrText = response.data.text;
-                    });
-                }
-            }, {
-                type: "separator"
-            }, {
-                iconHTML: "",
-                label: window.siyuan.languages.reOCR,
-                click() {
-                    fetchPost("/api/asset/ocr", {
-                        path: imgElement.getAttribute("src"),
-                        force: true
-                    });
-                }
-            }],
-        }).element);
-        window.siyuan.menus.menu.append(new MenuItem({
             icon: "iconAlignCenter",
             label: window.siyuan.languages.alignCenter,
             accelerator: window.siyuan.config.keymap.editor.general.alignCenter.custom,
