@@ -51,6 +51,7 @@ import {getUnRefList, openSearchUnRef, unRefMoreMenu} from "./unRef";
 import {getDefaultType} from "./getDefault";
 import {isSupportCSSHL, searchMarkRender} from "../protyle/render/searchMarkRender";
 import {saveKeyList, toggleAssetHistory, toggleReplaceHistory, toggleSearchHistory} from "./toggleHistory";
+import {highlightById} from "../util/highlightById";
 
 export const openGlobalSearch = (app: App, text: string, replace: boolean, searchData?: Config.IUILayoutTabSearchConfig) => {
     text = text.trim();
@@ -84,7 +85,7 @@ export const openGlobalSearch = (app: App, text: string, replace: boolean, searc
 };
 
 // closeCB 不存在为页签搜索
-export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, element: Element, closeCB?: () => void) => {
+export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, element: HTMLElement, closeCB?: () => void) => {
     let methodText = window.siyuan.languages.keyword;
     if (config.method === 1) {
         methodText = window.siyuan.languages.querySyntax;
@@ -311,7 +312,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
 
         nextElement.classList.remove("fn__flex-1");
         nextElement.style[direction === "lr" ? "width" : "height"] = nextSize + "px";
-
+        element.style.userSelect = "none";
         documentSelf.onmousemove = (moveEvent: MouseEvent) => {
             moveEvent.preventDefault();
             moveEvent.stopPropagation();
@@ -324,6 +325,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
         };
 
         documentSelf.onmouseup = () => {
+            element.style.userSelect = "";
             documentSelf.onmousemove = null;
             documentSelf.onmouseup = null;
             documentSelf.ondragstart = null;
@@ -338,8 +340,8 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
     });
 
     const localSearch = window.siyuan.storage[Constants.LOCAL_SEARCHASSET] as ISearchAssetOption;
-    const assetsElement = element.querySelector("#searchAssets");
-    const unRefPanelElement = element.querySelector("#searchUnRefPanel");
+    const assetsElement = element.querySelector("#searchAssets") as HTMLElement;
+    const unRefPanelElement = element.querySelector("#searchUnRefPanel") as HTMLElement;
     element.addEventListener("click", (event: MouseEvent) => {
         let target = event.target as HTMLElement;
         const searchPathInputElement = element.querySelector("#searchPathInput");
@@ -1101,6 +1103,8 @@ export const getArticle = (options: {
                     searchMarkRender(options.edit.protyle, getResponse.data.keywords, options.id, () => {
                         if (options.edit.protyle.highlight.ranges.length > 0 && options.edit.protyle.highlight.ranges[options.edit.protyle.highlight.rangeIndex]) {
                             options.edit.protyle.contentElement.scrollTop = options.edit.protyle.contentElement.scrollTop + options.edit.protyle.highlight.ranges[options.edit.protyle.highlight.rangeIndex].getBoundingClientRect().top - contentRect.top - contentRect.height / 2;
+                        } else {
+                            highlightById(options.edit.protyle, options.id);
                         }
                     });
                 } else {

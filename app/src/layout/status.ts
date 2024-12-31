@@ -131,13 +131,13 @@ export const countSelectWord = (range: Range, rootID?: string) => {
         const selectText = range.toString();
         if (selectText) {
             fetchPost("/api/block/getContentWordCount", {"content": range.toString()}, (response) => {
-                renderStatusbarCounter(response.data);
+                renderStatusbarCounter(response.data.stat);
             });
             countRootId = "";
         } else if (rootID && rootID !== countRootId) {
             countRootId = rootID;
             fetchPost("/api/block/getTreeStat", {id: rootID}, (response) => {
-                renderStatusbarCounter(response.data);
+                renderStatusbarCounter(response.data.stat);
             });
         }
     }, Constants.TIMEOUT_COUNT);
@@ -149,6 +149,10 @@ export const countBlockWord = (ids: string[], rootID?: string, clearCache = fals
     if (document.getElementById("status").classList.contains("fn__none")) {
         return;
     }
+    if (getSelection().rangeCount > 0 && getSelection().getRangeAt(0).toString()) {
+        countSelectWord(getSelection().getRangeAt(0));
+        return;
+    }
     clearTimeout(countTimeout);
     countTimeout = window.setTimeout(() => {
         if (clearCache) {
@@ -156,13 +160,13 @@ export const countBlockWord = (ids: string[], rootID?: string, clearCache = fals
         }
         if (ids.length > 0) {
             fetchPost("/api/block/getBlocksWordCount", {ids}, (response) => {
-                renderStatusbarCounter(response.data);
+                renderStatusbarCounter(response.data.stat);
             });
             countRootId = "";
         } else if (rootID && rootID !== countRootId) {
             countRootId = rootID;
             fetchPost("/api/block/getTreeStat", {id: rootID}, (response) => {
-                renderStatusbarCounter(response.data);
+                renderStatusbarCounter(response.data.stat);
             });
         }
     }, Constants.TIMEOUT_COUNT);
@@ -196,7 +200,8 @@ export const renderStatusbarCounter = (stat: {
     }
     if (0 < stat.refCount) {
         html += `<span class="ft__on-surface">${window.siyuan.languages.refCount}</span>&nbsp;${stat.refCount}<span class="fn__space"></span>`;
-    }if (0 < stat.blockCount) {
+    }
+    if (0 < stat.blockCount) {
         html += `<span class="ft__on-surface">${window.siyuan.languages.blockCount}</span>&nbsp;${stat.blockCount}<span class="fn__space"></span>`;
     }
     document.querySelector("#status .status__counter").innerHTML = html;

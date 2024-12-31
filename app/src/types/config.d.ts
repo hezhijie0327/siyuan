@@ -279,7 +279,8 @@ declare namespace Config {
         | "de_DE"
         | "he_IL"
         | "ru_RU"
-        | "pl_PL";
+        | "pl_PL"
+        | "ar_SA";
 
     /**
      * SiYuan bazaar related configuration
@@ -884,6 +885,7 @@ declare namespace Config {
         showInFolder: IKey;
         spaceRepetition: IKey;
         switchReadonly: IKey;
+        switchAdjust: IKey;
         undo: IKey;
         vLayout: IKey;
         wysiwyg: IKey;
@@ -1374,6 +1376,7 @@ declare namespace Config {
          */
         synced: number;
         webdav: ISyncWebDAV;
+        local: ISyncLocal;
     }
 
     /**
@@ -1449,6 +1452,28 @@ declare namespace Config {
     }
 
     /**
+     * Local file system related configuration
+     */
+    export interface ISyncLocal {
+        /**
+         * The full path of local directory
+         *
+         * Examples:
+         * - Windows: `"D:/path/to/repos/directory"`
+         * - Unix: `"/path/to/repos/directory"`
+         */
+        endpoint: string;
+        /**
+         * Timeout (unit: seconds)
+         */
+        timeout: number;
+        /**
+         * Concurrent requests.
+         */
+        concurrentReqs: number;
+    }
+
+    /**
      * System related information
      */
     export interface ISystem {
@@ -1472,6 +1497,7 @@ declare namespace Config {
          * - `docker`: Docker container
          * - `android`: Android device
          * - `ios`: iOS device
+         * - `harmony`: HarmonyOS device
          * - `std`: Desktop Electron environment
          */
         container: TSystemContainer;
@@ -1536,10 +1562,6 @@ declare namespace Config {
          * Operating system platform name
          */
         osPlatform: string;
-        /**
-         * Whether to upload error logs
-         */
-        uploadErrLog: boolean;
         /**
          * The absolute path of the workspace directory
          */

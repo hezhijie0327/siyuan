@@ -138,6 +138,19 @@ export const isMac = () => {
     return navigator.platform.toUpperCase().indexOf("MAC") > -1;
 };
 
+export const isWin11 = async () => {
+    if (!(navigator as any).userAgentData || !(navigator as any).userAgentData.getHighEntropyValues) {
+        return false;
+    }
+    const ua = await (navigator as any).userAgentData.getHighEntropyValues(["platformVersion"]);
+    if ((navigator as any).userAgentData.platform === "Windows") {
+        if (parseInt(ua.platformVersion.split(".")[0]) >= 13) {
+           return true;
+        }
+    }
+    return false;
+};
+
 export const isInAndroid = () => {
     return window.siyuan.config.system.container === "android" && window.JSAndroid;
 };

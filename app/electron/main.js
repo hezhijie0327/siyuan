@@ -861,6 +861,15 @@ app.whenReady().then(() => {
                     globalShortcut.unregister(hotKey2Electron(data.accelerator));
                 }
                 break;
+            case "setTrafficLightPosition":
+                if (!currentWindow || !currentWindow.setWindowButtonPosition) {
+                    return;
+                }
+                if (new URL(currentWindow.getURL()).pathname === "/stage/build/app/window.html") {
+                    data.position.y += 5 * data.zoom;
+                }
+                currentWindow.setWindowButtonPosition(data.position);
+                break;
             case "show":
                 if (!currentWindow) {
                     return;
@@ -997,6 +1006,17 @@ app.whenReady().then(() => {
     });
     ipcMain.on("siyuan-quit", (event, port) => {
         exitApp(port);
+    });
+    ipcMain.on("siyuan-show-window", (event) => {
+        const mainWindow = getWindowByContentId(event.sender.id);
+        if (!mainWindow) {
+            return;
+        }
+
+        if (mainWindow.isMinimized()) {
+            mainWindow.restore();
+        }
+        mainWindow.show();
     });
     ipcMain.on("siyuan-open-window", (event, data) => {
         const mainWindow = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];

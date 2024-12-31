@@ -35,6 +35,33 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
+func addMicrosoftDefenderExclusion(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	if !gulu.OS.IsWindows() {
+		return
+	}
+
+	err := model.AddMicrosoftDefenderExclusion()
+	if nil != err {
+		ret.Code = -1
+		ret.Msg = err.Error()
+	}
+}
+
+func ignoreAddMicrosoftDefenderExclusion(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	if !gulu.OS.IsWindows() {
+		return
+	}
+
+	model.Conf.System.MicrosoftDefenderExcluded = true
+	model.Conf.Save()
+}
+
 func reloadUI(c *gin.Context) {
 	ret := gulu.Ret.NewResult()
 	defer c.JSON(http.StatusOK, ret)
@@ -147,7 +174,7 @@ func getEmojiConf(c *gin.Context) {
 		} else {
 			for _, customEmoji := range customEmojis {
 				name := customEmoji.Name()
-				if strings.HasPrefix(name, ".") {
+				if strings.HasPrefix(name, ".") || strings.Contains(name, "<") {
 					continue
 				}
 
@@ -165,7 +192,7 @@ func getEmojiConf(c *gin.Context) {
 						}
 
 						name = subCustomEmoji.Name()
-						if strings.HasPrefix(name, ".") {
+						if strings.HasPrefix(name, ".") || strings.Contains(name, "<") {
 							continue
 						}
 
@@ -268,6 +295,7 @@ func exportConf(c *gin.Context) {
 		clonedConf.System.Container = ""
 		clonedConf.System.IsMicrosoftStore = false
 		clonedConf.System.IsInsider = false
+		clonedConf.System.MicrosoftDefenderExcluded = false
 	}
 	clonedConf.Sync = nil
 	clonedConf.Stat = nil
@@ -632,23 +660,6 @@ func setGoogleAnalytics(c *gin.Context) {
 	googleAnalytics := arg["googleAnalytics"].(bool)
 	model.Conf.System.DisableGoogleAnalytics = !googleAnalytics
 	model.Conf.Save()
-}
-
-func setUploadErrLog(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
-
-	uploadErrLog := arg["uploadErrLog"].(bool)
-	model.Conf.System.UploadErrLog = uploadErrLog
-	model.Conf.Save()
-
-	util.PushMsg(model.Conf.Language(42), 1000*15)
-	time.Sleep(time.Second * 3)
 }
 
 func setAutoLaunch(c *gin.Context) {
