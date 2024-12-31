@@ -299,7 +299,7 @@ func CheckUpdate(showMsg bool) {
 }
 
 func isVersionUpToDate(releaseVer string) bool {
-	return ver2num(releaseVer) <= ver2num(util.Ver)
+	return true
 }
 
 func skipNewVerInstallPkg() bool {
