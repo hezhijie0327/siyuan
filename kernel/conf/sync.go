@@ -35,10 +35,10 @@ func NewSync() *Sync {
 	return &Sync{
 		CloudName:           "main",
 		Enabled:             false,
-		Perception:          true,
+		Perception:          false,
 		Mode:                1,
-		GenerateConflictDoc: true,
-		Provider:            ProviderS3,
+		GenerateConflictDoc: false,
+		Provider:            ProviderSiYuan,
 		Interval:            30,
 	}
 }
@@ -71,6 +71,7 @@ type Local struct {
 }
 
 const (
+	ProviderSiYuan = 0 // ProviderSiYuan 为思源官方提供的云端存储服务
 	ProviderS3     = 2 // ProviderS3 为 S3 协议对象存储提供的云端存储服务
 	ProviderWebDAV = 3 // ProviderWebDAV 为 WebDAV 协议提供的云端存储服务
 	ProviderLocal  = 4 // ProviderLocal 为本地文件系统提供的存储服务
@@ -78,6 +79,8 @@ const (
 
 func ProviderToStr(provider int) string {
 	switch provider {
+	case ProviderSiYuan:
+		return "SiYuan"
 	case ProviderS3:
 		return "S3"
 	case ProviderWebDAV:
