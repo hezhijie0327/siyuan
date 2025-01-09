@@ -166,7 +166,7 @@ export const pasteAsPlainText = async (protyle: IProtyle) => {
     }
     if (localFiles.length > 0) {
         uploadLocalFiles(localFiles, protyle, false);
-        writeText("");
+        return;
     }
     /// #endif
     if (localFiles.length === 0) {
@@ -272,7 +272,6 @@ const readLocalFile = async (protyle: IProtyle, localFiles: string[]) => {
         }
     }
     uploadLocalFiles(localFiles, protyle, true);
-    writeText("");
 };
 
 export const paste = async (protyle: IProtyle, event: (ClipboardEvent | DragEvent) & { target: HTMLElement }) => {
@@ -412,6 +411,7 @@ export const paste = async (protyle: IProtyle, event: (ClipboardEvent | DragEven
             e.removeAttribute(Constants.CUSTOM_RIFF_DECKS);
             e.classList.remove("protyle-wysiwyg--select", "protyle-wysiwyg--hl");
             e.setAttribute("updated", newId.split("-")[0]);
+            e.removeAttribute("refcount");
             isBlock = true;
         });
         if (nodeElement.classList.contains("table")) {
