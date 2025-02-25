@@ -381,8 +381,8 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 			if err = tx.writeTree(targetTree); err != nil {
 				return
 			}
-			task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, srcTree.ID, srcTree.ID)
-			task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, targetTree.ID, srcNode.ID)
+			task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, srcTree.ID, srcTree.ID)
+			task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, targetTree.ID, srcNode.ID)
 		}
 		return
 	}
@@ -466,8 +466,8 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 		if err = tx.writeTree(targetTree); err != nil {
 			return &TxErr{code: TxErrCodeWriteTree, msg: err.Error(), id: id}
 		}
-		task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, srcTree.ID, srcTree.ID)
-		task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, targetTree.ID, srcNode.ID)
+		task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, srcTree.ID, srcTree.ID)
+		task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, targetTree.ID, srcNode.ID)
 	}
 	return
 }
@@ -779,7 +779,7 @@ func (tx *Transaction) doDelete(operation *Operation) (ret *TxErr) {
 		if nil != defTree {
 			defNode := treenode.GetNodeInTree(defTree, defID)
 			if nil != defNode {
-				task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, defTree.ID, defNode.ID)
+				task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, defTree.ID, defNode.ID)
 			}
 		}
 	}
@@ -1110,7 +1110,7 @@ func (tx *Transaction) doInsert(operation *Operation) (ret *TxErr) {
 		if nil != defTree {
 			defNode := treenode.GetNodeInTree(defTree, defID)
 			if nil != defNode {
-				task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, defTree.ID, defNode.ID)
+				task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, defTree.ID, defNode.ID)
 			}
 		}
 	}
@@ -1221,7 +1221,7 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 			if nil != defTree {
 				defNode := treenode.GetNodeInTree(defTree, defID)
 				if nil != defNode {
-					task.AppendAsyncTaskWithDelay(task.SetDefRefCount, 1*time.Second, refreshRefCount, defTree.ID, defNode.ID)
+					task.AppendAsyncTaskWithDelay(task.SetDefRefCount, util.SQLFlushInterval, refreshRefCount, defTree.ID, defNode.ID)
 				}
 			}
 		}
@@ -1313,10 +1313,17 @@ func upsertAvBlockRel(node *ast.Node) {
 		})
 	}
 
-	affectedAvIDs = gulu.Str.RemoveDuplicatedElem(affectedAvIDs)
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		sql.FlushQueue()
+
+		affectedAvIDs = gulu.Str.RemoveDuplicatedElem(affectedAvIDs)
+		var relatedAvIDs []string
+		for _, avID := range affectedAvIDs {
+			relatedAvIDs = append(relatedAvIDs, av.GetSrcAvIDs(avID)...)
+		}
+		affectedAvIDs = append(affectedAvIDs, relatedAvIDs...)
+		affectedAvIDs = gulu.Str.RemoveDuplicatedElem(affectedAvIDs)
 		for _, avID := range affectedAvIDs {
 			ReloadAttrView(avID)
 		}
