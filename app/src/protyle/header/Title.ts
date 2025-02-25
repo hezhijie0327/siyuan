@@ -66,6 +66,11 @@ export class Title {
             if (event.isComposing) {
                 return;
             }
+            if (this.editElement.textContent === "") {
+                this.editElement.querySelectorAll("br").forEach(item => {
+                    item.remove();
+                });
+            }
             this.rename(protyle);
         });
         this.editElement.addEventListener("compositionend", () => {
@@ -190,6 +195,7 @@ export class Title {
             const range = getEditorRange(this.editElement);
             if (range.toString() !== "") {
                 window.siyuan.menus.menu.append(new MenuItem({
+                    id: "copy",
                     icon: "iconCopy",
                     accelerator: "⌘C",
                     label: window.siyuan.languages.copy,
@@ -199,6 +205,7 @@ export class Title {
                     }
                 }).element);
                 window.siyuan.menus.menu.append(new MenuItem({
+                    id: "cut",
                     icon: "iconCut",
                     accelerator: "⌘X",
                     label: window.siyuan.languages.cut,
@@ -211,6 +218,7 @@ export class Title {
                     }
                 }).element);
                 window.siyuan.menus.menu.append(new MenuItem({
+                    id: "delete",
                     icon: "iconTrashcan",
                     accelerator: "⌫",
                     label: window.siyuan.languages.delete,
@@ -225,15 +233,27 @@ export class Title {
                 }).element);
             }
             window.siyuan.menus.menu.append(new MenuItem({
+                id: "paste",
                 label: window.siyuan.languages.paste,
                 icon: "iconPaste",
                 accelerator: "⌘V",
                 click: async () => {
                     focusByRange(getEditorRange(this.editElement));
-                    document.execCommand("paste");
+                    if (document.queryCommandSupported("paste")) {
+                        document.execCommand("paste");
+                    } else {
+                        try {
+                            const text = await readText();
+                            document.execCommand("insertText", false, replaceFileName(text));
+                            this.rename(protyle);
+                        } catch (e) {
+                            console.log(e);
+                        }
+                    }
                 }
             }).element);
             window.siyuan.menus.menu.append(new MenuItem({
+                id: "pasteAsPlainText",
                 label: window.siyuan.languages.pasteAsPlainText,
                 accelerator: "⇧⌘V",
                 click: async () => {
@@ -250,6 +270,7 @@ export class Title {
                 }
             }).element);
             window.siyuan.menus.menu.append(new MenuItem({
+                id: "selectAll",
                 label: window.siyuan.languages.selectAll,
                 icon: "iconSelect",
                 accelerator: "⌘A",
@@ -346,7 +367,7 @@ export class Title {
         }
         this.element.querySelector(".protyle-attr").innerHTML = nodeAttrHTML;
         if (response.data.refCount !== 0) {
-            this.element.querySelector(".protyle-attr").insertAdjacentHTML("beforeend", `<div class="protyle-attr--refcount popover__block" data-defids='${JSON.stringify([protyle.block.rootID])}' data-id='${JSON.stringify(response.data.refIDs)}'>${response.data.refCount}</div>`);
+            this.element.querySelector(".protyle-attr").insertAdjacentHTML("beforeend", `<div class="protyle-attr--refcount popover__block">${response.data.refCount}</div>`);
         }
         // 存在设置新建文档名模板，不能使用 Untitled 进行判断，https://ld246.com/article/1649301009888
         if (this.editElement && new Date().getTime() - dayjs(response.data.id.split("-")[0]).toDate().getTime() < 2000) {

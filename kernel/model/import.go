@@ -721,7 +721,7 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 	hPathsIDs := map[string]string{}
 	idPaths := map[string]string{}
 	moveIDs := map[string]string{}
-
+	assetsDone := map[string]string{}
 	if gulu.File.IsDir(localPath) { // 导入文件夹
 		// 收集所有资源文件
 		assets := map[string]string{}
@@ -744,7 +744,6 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 		})
 
 		targetPaths := map[string]string{}
-		assetsDone := map[string]string{}
 		count := 0
 		// md 转换 sy
 		filelock.Walk(localPath, func(currentPath string, d fs.DirEntry, err error) error {
@@ -866,8 +865,12 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 					return ast.WalkContinue
 				}
 
-				dest = strings.ReplaceAll(dest, "%20", " ")
-				dest = strings.ReplaceAll(dest, "%5C", "/")
+				decodedDest := string(html.DecodeDestination([]byte(dest)))
+				if decodedDest != dest {
+					dest = decodedDest
+				}
+				absolutePath := filepath.Join(currentDir, dest)
+
 				if ast.NodeLinkDest == n.Type {
 					n.Tokens = []byte(dest)
 				} else {
@@ -881,32 +884,29 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 					return ast.WalkContinue
 				}
 
-				absDest := filepath.Join(currentDir, dest)
-				fullPath, exist := assets[absDest]
-				if !exist {
-					absDest = filepath.Join(currentDir, string(html.DecodeDestination([]byte(dest))))
+				if !gulu.File.IsExist(absolutePath) {
+					return ast.WalkContinue
 				}
-				fullPath, exist = assets[absDest]
-				if exist {
-					existName := assetsDone[absDest]
-					var name string
-					if "" == existName {
-						name = filepath.Base(fullPath)
-						name = util.AssetName(name)
-						assetTargetPath := filepath.Join(assetDirPath, name)
-						if err = filelock.Copy(fullPath, assetTargetPath); err != nil {
-							logging.LogErrorf("copy asset from [%s] to [%s] failed: %s", fullPath, assetTargetPath, err)
-							return ast.WalkContinue
-						}
-						assetsDone[absDest] = name
-					} else {
-						name = existName
+
+				existName := assetsDone[absolutePath]
+				var name string
+				if "" == existName {
+					name = filepath.Base(absolutePath)
+					name = util.FilterUploadFileName(name)
+					name = util.AssetName(name)
+					assetTargetPath := filepath.Join(assetDirPath, name)
+					if err = filelock.Copy(absolutePath, assetTargetPath); err != nil {
+						logging.LogErrorf("copy asset from [%s] to [%s] failed: %s", absolutePath, assetTargetPath, err)
+						return ast.WalkContinue
 					}
-					if ast.NodeLinkDest == n.Type {
-						n.Tokens = []byte("assets/" + name)
-					} else {
-						n.TextMarkAHref = "assets/" + name
-					}
+					assetsDone[absolutePath] = name
+				} else {
+					name = existName
+				}
+				if ast.NodeLinkDest == n.Type {
+					n.Tokens = []byte("assets/" + name)
+				} else {
+					n.TextMarkAHref = "assets/" + name
 				}
 				return ast.WalkContinue
 			})
@@ -988,8 +988,12 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 				return ast.WalkContinue
 			}
 
-			dest = strings.ReplaceAll(dest, "%20", " ")
-			dest = strings.ReplaceAll(dest, "%5C", "/")
+			decodedDest := string(html.DecodeDestination([]byte(dest)))
+			if decodedDest != dest {
+				dest = decodedDest
+			}
+			absolutePath := filepath.Join(filepath.Dir(localPath), dest)
+
 			if ast.NodeLinkDest == n.Type {
 				n.Tokens = []byte(dest)
 			} else {
@@ -1003,25 +1007,29 @@ func ImportFromLocalPath(boxID, localPath string, toPath string) (err error) {
 				return ast.WalkContinue
 			}
 
-			absolutePath := filepath.Join(filepath.Dir(localPath), dest)
-			exist := gulu.File.IsExist(absolutePath)
-			if !exist {
-				absolutePath = filepath.Join(filepath.Dir(localPath), string(html.DecodeDestination([]byte(dest))))
-				exist = gulu.File.IsExist(absolutePath)
+			if !gulu.File.IsExist(absolutePath) {
+				return ast.WalkContinue
 			}
-			if exist {
-				name := filepath.Base(absolutePath)
+
+			existName := assetsDone[absolutePath]
+			var name string
+			if "" == existName {
+				name = filepath.Base(absolutePath)
+				name = util.FilterUploadFileName(name)
 				name = util.AssetName(name)
 				assetTargetPath := filepath.Join(assetDirPath, name)
 				if err = filelock.Copy(absolutePath, assetTargetPath); err != nil {
 					logging.LogErrorf("copy asset from [%s] to [%s] failed: %s", absolutePath, assetTargetPath, err)
 					return ast.WalkContinue
 				}
-				if ast.NodeLinkDest == n.Type {
-					n.Tokens = []byte("assets/" + name)
-				} else {
-					n.TextMarkAHref = "assets/" + name
-				}
+				assetsDone[absolutePath] = name
+			} else {
+				name = existName
+			}
+			if ast.NodeLinkDest == n.Type {
+				n.Tokens = []byte("assets/" + name)
+			} else {
+				n.TextMarkAHref = "assets/" + name
 			}
 			return ast.WalkContinue
 		})
