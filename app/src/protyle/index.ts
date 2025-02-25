@@ -128,6 +128,16 @@ export class Protyle {
                         case "reload":
                             if (data.data === this.protyle.block.rootID) {
                                 reloadProtyle(this.protyle, false);
+                                getAllModels().outline.forEach(item => {
+                                    if (item.blockId === data.data) {
+                                        fetchPost("/api/outline/getDocOutline", {
+                                            id: item.blockId,
+                                            preview: item.isPreview
+                                        }, response => {
+                                            item.update(response);
+                                        });
+                                    }
+                                });
                             }
                             break;
                         case "refreshAttributeView":
@@ -290,6 +300,7 @@ export class Protyle {
         fetchPost("/api/filetree/getDoc", {
             id: mergedOptions.blockId,
             isBacklink: mergedOptions.action.includes(Constants.CB_GET_BACKLINK),
+            originalRefBlockIDs: mergedOptions.originalRefBlockIDs,
             // 0: 仅当前 ID（默认值），1：向上 2：向下，3：上下都加载，4：加载最后
             mode: (mergedOptions.action && mergedOptions.action.includes(Constants.CB_GET_CONTEXT)) ? 3 : 0,
             size: mergedOptions.action?.includes(Constants.CB_GET_ALL) ? Constants.SIZE_GET_MAX : window.siyuan.config.editor.dynamicLoadBlocks,
