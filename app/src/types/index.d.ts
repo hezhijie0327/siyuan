@@ -124,6 +124,10 @@ declare namespace CSS {
     const highlights: Map<string, Highlight>;
 }
 
+interface CSSStyleDeclarationElectron extends CSSStyleDeclaration {
+    WebkitAppRegion: string
+}
+
 interface Window {
     echarts: {
         init(element: HTMLElement, theme?: string, options?: {
@@ -138,6 +142,8 @@ interface Window {
         dispose(element: Element): void;
         getInstanceById(id: string): {
             resize: () => void
+            clear: () => void
+            getOption: () => { series: { type: string }[] }
         };
     }
     ABCJS: {
@@ -178,11 +184,19 @@ interface Window {
     dataLayer: any[]
 
     siyuan: ISiyuan
-    webkit: any
-    html2canvas: (element: Element, opitons: {
-        useCORS: boolean,
-        scale?: number
-    }) => Promise<any>;
+    webkit: {
+        messageHandlers: {
+            openLink: { postMessage: (url: string) => void }
+            startKernelFast: { postMessage: (url: string) => void }
+            changeStatusBar: { postMessage: (url: string) => void }
+            setClipboard: { postMessage: (url: string) => void }
+            purchase: { postMessage: (url: string) => void }
+        }
+    }
+    htmlToImage: {
+        toCanvas: (element: Element) => Promise<HTMLCanvasElement>
+        toBlob: (element: Element) => Promise<Blob>
+    };
     JSAndroid: {
         returnDesktop(): void
         openExternal(url: string): void
@@ -210,9 +224,13 @@ interface Window {
 
     goBack(): void
 
+    showMessage(message: string, timeout: number, type: string, messageId?: string): void
+
     reconnectWebSocket(): void
 
     showKeyboardToolbar(height: number): void
+
+    processIOSPurchaseResponse(code: number): void
 
     hideKeyboardToolbar(): void
 

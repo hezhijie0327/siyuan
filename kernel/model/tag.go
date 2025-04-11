@@ -22,9 +22,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/88250/gulu"
 	"github.com/88250/lute/ast"
 	"github.com/emirpasic/gods/sets/hashset"
-	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/search"
 	"github.com/siyuan-note/siyuan/kernel/sql"
 	"github.com/siyuan-note/siyuan/kernel/treenode"
@@ -49,6 +49,8 @@ func RemoveTag(label string) (err error) {
 		}
 	}
 
+	var reloadTreeIDs []string
+	updateNodes := map[string]*ast.Node{}
 	for treeID, blocks := range treeBlocks {
 		util.PushEndlessProgress("[" + treeID + "]")
 		tree, e := LoadTreeByBlockID(treeID)
@@ -87,6 +89,8 @@ func RemoveTag(label string) (err error) {
 					}
 				}
 			}
+
+			updateNodes[node.ID] = node
 		}
 		for _, n := range unlinks {
 			n.Unlink()
@@ -97,9 +101,20 @@ func RemoveTag(label string) (err error) {
 			return
 		}
 		util.RandomSleep(50, 150)
+		reloadTreeIDs = append(reloadTreeIDs, tree.ID)
 	}
 
-	util.ReloadUI()
+	sql.FlushQueue()
+
+	reloadTreeIDs = gulu.Str.RemoveDuplicatedElem(reloadTreeIDs)
+	for _, id := range reloadTreeIDs {
+		ReloadProtyle(id)
+	}
+
+	updateAttributeViewBlockText(updateNodes)
+
+	sql.FlushQueue()
+	util.PushClearProgress()
 	return
 }
 
@@ -133,6 +148,9 @@ func RenameTag(oldLabel, newLabel string) (err error) {
 			treeBlocks[tag.RootID] = append(blocks, tag.BlockID)
 		}
 	}
+
+	var reloadTreeIDs []string
+	updateNodes := map[string]*ast.Node{}
 
 	for treeID, blocks := range treeBlocks {
 		util.PushEndlessProgress("[" + treeID + "]")
@@ -173,6 +191,8 @@ func RenameTag(oldLabel, newLabel string) (err error) {
 					}
 				}
 			}
+
+			updateNodes[node.ID] = node
 		}
 		util.PushEndlessProgress(fmt.Sprintf(Conf.Language(111), util.EscapeHTML(tree.Root.IALAttr("title"))))
 		if err = writeTreeUpsertQueue(tree); err != nil {
@@ -180,9 +200,20 @@ func RenameTag(oldLabel, newLabel string) (err error) {
 			return
 		}
 		util.RandomSleep(50, 150)
+		reloadTreeIDs = append(reloadTreeIDs, tree.ID)
 	}
 
-	util.ReloadUI()
+	sql.FlushQueue()
+
+	reloadTreeIDs = gulu.Str.RemoveDuplicatedElem(reloadTreeIDs)
+	for _, id := range reloadTreeIDs {
+		ReloadProtyle(id)
+	}
+
+	updateAttributeViewBlockText(updateNodes)
+
+	sql.FlushQueue()
+	util.PushClearProgress()
 	return
 }
 
@@ -271,7 +302,8 @@ func sortTags(tags Tags) {
 
 func SearchTags(keyword string) (ret []string) {
 	ret = []string{}
-	defer logging.Recover() // 定位 无法添加题头图标签 https://github.com/siyuan-note/siyuan/issues/6756
+
+	sql.FlushQueue()
 
 	labels := labelBlocksByKeyword(keyword)
 	for label := range labels {
