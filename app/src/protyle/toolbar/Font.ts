@@ -61,7 +61,7 @@ export const appearanceMenu = (protyle: IProtyle, nodeElements?: Element[]) => {
         lastColorHTML = `<div class="fn__flex">
     ${window.siyuan.languages.lastUsed}
     <span class="fn__space"></span>
-    <kbd class="fn__kbd fn__flex-center">${updateHotkeyTip(window.siyuan.config.keymap.editor.insert.lastUsed.custom)}</kbd>
+    <kbd class="fn__kbd fn__flex-center${window.siyuan.config.keymap.editor.insert.lastUsed.custom ? "" : " fn__none"}">${updateHotkeyTip(window.siyuan.config.keymap.editor.insert.lastUsed.custom)}</kbd>
 </div>
 <div class="fn__hr--small"></div>
 <div class="fn__flex fn__flex-wrap" style="align-items: center">`;
@@ -153,8 +153,8 @@ export const appearanceMenu = (protyle: IProtyle, nodeElements?: Element[]) => {
     <div class="b3-tooltips b3-tooltips__n fn__flex${fontSize.endsWith("em") ? " fn__none" : ""}" aria-label="${fontSize}">   
         <input class="b3-slider fn__block" id="fontSizePX" max="72" min="9" step="1" type="range" value="${parseInt(fontSize)}">
     </div>
-    <div class="b3-tooltips b3-tooltips__n fn__flex${fontSize.endsWith("em") ? "" : " fn__none"}" aria-label="${parseInt(fontSize) * 100}%">   
-        <input class="b3-slider fn__block" id="fontSizeEM" max="4.5" min="0.56" step="0.01" type="range" value="${parseInt(fontSize)}">
+    <div class="b3-tooltips b3-tooltips__n fn__flex${fontSize.endsWith("em") ? "" : " fn__none"}" aria-label="${parseFloat(fontSize) * 100}%">   
+        <input class="b3-slider fn__block" id="fontSizeEM" max="4.5" min="0.56" step="0.01" type="range" value="${parseFloat(fontSize)}">
     </div>
 </div>
 <div class="fn__hr--b"></div>
@@ -219,7 +219,7 @@ export const appearanceMenu = (protyle: IProtyle, nodeElements?: Element[]) => {
         fontSizePXElement.parentElement.setAttribute("aria-label", fontSizePXElement.value + "px");
     });
     fontSizeEMElement.addEventListener("input", function () {
-        fontSizeEMElement.parentElement.setAttribute("aria-label", (parseFloat(fontSizeEMElement.value) * 100).toFixed(0) + "%")
+        fontSizeEMElement.parentElement.setAttribute("aria-label", (parseFloat(fontSizeEMElement.value) * 100).toFixed(0) + "%");
     });
     return element;
 };
@@ -355,7 +355,6 @@ export const setFontStyle = (textElement: HTMLElement, textOption: ITextOption) 
                 break;
             case "inline-memo":
                 textElement.removeAttribute("contenteditable");
-                textElement.removeAttribute("data-subtype");
                 textElement.removeAttribute("data-content");
                 break;
         }
@@ -369,7 +368,7 @@ export const setFontStyle = (textElement: HTMLElement, textOption: ITextOption) 
 export const hasSameTextStyle = (currentElement: HTMLElement, sideElement: HTMLElement, textObj: ITextOption) => {
     if (!textObj) {
         // https://github.com/siyuan-note/siyuan/issues/14019
-        if (currentElement.nodeType !== 3 && sideElement.nodeType !== 3 &&
+        if (currentElement && currentElement.nodeType !== 3 && sideElement.nodeType !== 3 &&
             // 当为 span 时，都经过 isArrayEqual 判断
             sideElement.style.color === currentElement.style.color &&
             sideElement.style.webkitTextFillColor === currentElement.style.webkitTextFillColor &&
@@ -385,7 +384,7 @@ export const hasSameTextStyle = (currentElement: HTMLElement, sideElement: HTMLE
         return false;
     }
     if (textObj.type === "id") {
-        if (currentElement.nodeType !== 3) {
+        if (currentElement && currentElement.nodeType !== 3) {
             return currentElement.getAttribute("data-id") === sideElement.getAttribute("data-id") &&
                 currentElement.getAttribute("data-subtype") === sideElement.getAttribute("data-subtype") &&
                 currentElement.textContent === sideElement.textContent;
@@ -397,7 +396,7 @@ export const hasSameTextStyle = (currentElement: HTMLElement, sideElement: HTMLE
     }
 
     if (textObj.type === "file-annotation-ref") {
-        if (currentElement.nodeType !== 3) {
+        if (currentElement && currentElement.nodeType !== 3) {
             return currentElement.getAttribute("data-id") === sideElement.getAttribute("data-id") &&
                 currentElement.textContent === sideElement.textContent;
         }
@@ -410,7 +409,7 @@ export const hasSameTextStyle = (currentElement: HTMLElement, sideElement: HTMLE
     let textShadow = "";
     let backgroundColor = "";
     let fontSize = "";
-    if (currentElement.nodeType !== 3) {
+    if (currentElement && currentElement.nodeType !== 3) {
         color = currentElement.style.color;
         webkitTextFillColor = currentElement.style.webkitTextFillColor;
         webkitTextStroke = currentElement.style.webkitTextStroke;

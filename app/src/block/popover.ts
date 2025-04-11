@@ -32,7 +32,7 @@ export const initBlockPopover = (app: App) => {
                 if (aElement.classList.contains("av__cell--header")) {
                     const textElement = aElement.querySelector(".av__celltext");
                     const desc = aElement.getAttribute("data-desc");
-                    if (textElement.scrollWidth > textElement.clientWidth + 2 || desc) {
+                    if (textElement.scrollWidth > textElement.clientWidth + 0.5 || desc) {
                         if (desc) {
                             tip = `${getCellText(aElement)}<div class='ft__on-surface'>${escapeAriaLabel(desc)}</div>`;
                         } else {
@@ -57,7 +57,7 @@ export const initBlockPopover = (app: App) => {
             } else if (aElement.parentElement.parentElement.classList.contains("av__views") && aElement.parentElement.classList.contains("layout-tab-bar")) {
                 const textElement = aElement.querySelector(".item__text");
                 const desc = aElement.getAttribute("data-desc");
-                if (textElement.scrollWidth > textElement.clientWidth + 2 || desc) {
+                if (textElement.scrollWidth > textElement.clientWidth + 0.5 || desc) {
                     if (desc) {
                         tip = `${textElement.textContent}<div class='ft__on-surface'>${escapeAriaLabel(desc)}</div>`;
                     } else {
@@ -104,7 +104,7 @@ export const initBlockPopover = (app: App) => {
                     });
                     tip = "";
                 } else if (title) {
-                    tip += '<div class="fn__hr"></div><span>' + title + "</span>";
+                    tip = (tip ? (tip + '<div class="fn__hr"></div>') : "") + "<span>" + title + "</span>";
                 }
             }
 
@@ -416,7 +416,7 @@ export const showPopover = async (app: App, showRef = false) => {
         }
     });
     if (!hasPin && popoverTargetElement.parentElement &&
-        popoverTargetElement.parentElement.style.opacity !== "0.1" // 反向面板图标拖拽时不应该弹层
+        popoverTargetElement.parentElement.style.opacity !== "0.38" // 反向面板图标拖拽时不应该弹层
     ) {
         window.siyuan.blockPanels.push(new BlockPanel({
             app,
