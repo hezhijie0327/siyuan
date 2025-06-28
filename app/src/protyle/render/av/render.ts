@@ -14,8 +14,10 @@ import {escapeAriaLabel, escapeAttr, escapeHtml} from "../../../util/escape";
 import {electronUndo} from "../../undo";
 import {isInAndroid, isInHarmony, isInIOS} from "../../util/compatibility";
 import {isMobile} from "../../../util/functions";
+import {renderGallery} from "./gallery/render";
+import {getViewIcon} from "./view";
 
-export const avRender = (element: Element, protyle: IProtyle, cb?: () => void, viewID?: string, renderAll = true) => {
+export const avRender = (element: Element, protyle: IProtyle, cb?: (data: IAV) => void, renderAll = true) => {
     let avElements: Element[] = [];
     if (element.getAttribute("data-type") === "NodeAttributeView") {
         // 编辑器内代码块编辑渲染
@@ -28,12 +30,18 @@ export const avRender = (element: Element, protyle: IProtyle, cb?: () => void, v
     }
     if (avElements.length > 0) {
         avElements.forEach((e: HTMLElement) => {
-            if (e.getAttribute("data-render") === "true") {
+            if (e.getAttribute("data-render") === "true" || hasClosestByClassName(e, "av__gallery-content")) {
                 return;
             }
             if (isMobile() || isInIOS() || isInAndroid() || isInHarmony()) {
                 e.classList.add("av--touch");
             }
+
+            if (e.getAttribute("data-av-type") === "gallery") {
+                renderGallery({blockElement: e, protyle, cb, renderAll});
+                return;
+            }
+
             const alignSelf = e.style.alignSelf;
             if (e.firstElementChild.innerHTML === "") {
                 e.style.alignSelf = "";
@@ -75,16 +83,6 @@ export const avRender = (element: Element, protyle: IProtyle, cb?: () => void, v
             });
             const created = protyle.options.history?.created;
             const snapshot = protyle.options.history?.snapshot;
-            let newViewID = e.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "";
-            if (typeof viewID === "string") {
-                const viewTabElement = e.querySelector(`.av__views > .layout-tab-bar > .item[data-id="${viewID}"]`) as HTMLElement;
-                if (viewTabElement) {
-                    e.dataset.pageSize = viewTabElement.dataset.page;
-                }
-                newViewID = viewID;
-                fetchPost("/api/av/setDatabaseBlockView", {id: e.dataset.nodeId, viewID});
-                e.setAttribute(Constants.CUSTOM_SY_AV_VIEW, newViewID);
-            }
             let searchInputElement = e.querySelector('[data-type="av-search"]') as HTMLInputElement;
             const isSearching = searchInputElement && document.activeElement.isSameNode(searchInputElement);
             const query = searchInputElement?.value || "";
@@ -93,10 +91,15 @@ export const avRender = (element: Element, protyle: IProtyle, cb?: () => void, v
                 created,
                 snapshot,
                 pageSize: parseInt(e.dataset.pageSize) || undefined,
-                viewID: newViewID,
+                viewID: e.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 query: query.trim()
             }, (response) => {
                 const data = response.data.view as IAVTable;
+                if (response.data.viewType === "gallery") {
+                    e.setAttribute("data-av-type", "table");
+                    renderGallery({blockElement: e, protyle, cb, renderAll});
+                    return;
+                }
                 if (!e.dataset.pageSize) {
                     e.dataset.pageSize = data.pageSize.toString();
                 }
@@ -207,8 +210,8 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, rowIndex)}
                 let tabHTML = "";
                 let viewData: IAVView;
                 response.data.views.forEach((item: IAVView) => {
-                    tabHTML += `<div data-position="north" data-id="${item.id}" data-page="${item.pageSize}" data-desc="${escapeAriaLabel(item.desc || "")}" class="ariaLabel item${item.id === response.data.viewID ? " item--focus" : ""}">
-    ${item.icon ? unicode2Emoji(item.icon, "item__graphic", true) : '<svg class="item__graphic"><use xlink:href="#iconTable"></use></svg>'}
+                    tabHTML += `<div data-position="north" data-av-type="${item.type}" data-id="${item.id}" data-page="${item.pageSize}" data-desc="${escapeAriaLabel(item.desc || "")}" class="ariaLabel item${item.id === response.data.viewID ? " item--focus" : ""}">
+    ${item.icon ? unicode2Emoji(item.icon, "item__graphic", true) : `<svg class="item__graphic"><use xlink:href="#${getViewIcon(item.type)}"></use></svg>`}
     <span class="item__text">${escapeHtml(item.name)}</span>
 </div>`;
                     if (item.id === response.data.viewID) {
@@ -219,12 +222,12 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, rowIndex)}
     ${tableHTML}
     <div class="av__row--util${data.rowCount > data.rows.length ? " av__readonly--show" : ""}">
         <div class="av__colsticky">
-            <button class="b3-button" data-type="av-add-bottom">
+            <button class="b3-button av__button" data-type="av-add-bottom">
                 <svg><use xlink:href="#iconAdd"></use></svg>
                 <span>${window.siyuan.languages.newRow}</span>
             </button>
             <span class="fn__space"></span>
-            <button class="b3-button${data.rowCount > data.rows.length ? "" : " fn__none"}" data-type="av-load-more">
+            <button class="b3-button av__button${data.rowCount > data.rows.length ? "" : " fn__none"}" data-type="av-load-more">
                 <svg><use xlink:href="#iconArrowDown"></use></svg>
                 <span>${window.siyuan.languages.loadMore}</span>
                 <svg data-type="set-page-size" data-size="${data.pageSize}"><use xlink:href="#iconMore"></use></svg>
@@ -362,7 +365,7 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, rowIndex)}
                 }
                 e.querySelector(".layout-tab-bar").scrollLeft = (e.querySelector(".layout-tab-bar .item--focus") as HTMLElement).offsetLeft;
                 if (cb) {
-                    cb();
+                    cb(response.data);
                 }
                 if (!renderAll) {
                     return;
@@ -429,11 +432,11 @@ ${cell.color ? `color:${cell.color};` : ""}">${renderCell(cell.value, rowIndex)}
 
 let searchTimeout: number;
 
-const updateSearch = (e: HTMLElement, protyle: IProtyle) => {
+export const updateSearch = (e: HTMLElement, protyle: IProtyle) => {
     clearTimeout(searchTimeout);
     searchTimeout = window.setTimeout(() => {
         e.removeAttribute("data-render");
-        avRender(e, protyle, undefined, undefined, false);
+        avRender(e, protyle, undefined, false);
     }, Constants.TIMEOUT_INPUT);
 };
 
@@ -457,19 +460,55 @@ export const refreshAV = (protyle: IProtyle, operation: IOperation) => {
         if (operation.action === "setAttrViewColWidth") {
             Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-av-id="${operation.avID}"]`)).forEach((item: HTMLElement) => {
                 const cellElement = item.querySelector(`.av__cell[data-col-id="${operation.id}"]`) as HTMLElement;
-                if (!cellElement || cellElement.style.width === operation.data || item.getAttribute("custom-sy-av-view") !== operation.keyID) {
+                if (!cellElement || cellElement.style.width === operation.data || item.getAttribute(Constants.CUSTOM_SY_AV_VIEW) !== operation.keyID) {
                     return;
                 }
                 item.querySelectorAll(".av__row").forEach(rowItem => {
                     (rowItem.querySelector(`[data-col-id="${operation.id}"]`) as HTMLElement).style.width = operation.data;
                 });
             });
+        } else if (operation.action === "setAttrViewCardSize") {
+            Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-av-id="${operation.avID}"]`)).forEach((item: HTMLElement) => {
+                const galleryElement = item.querySelector(".av__gallery") as HTMLElement;
+                if (galleryElement) {
+                    galleryElement.classList.remove("av__gallery--small", "av__gallery--big");
+                    if (operation.data === 0) {
+                        galleryElement.classList.add("av__gallery--small");
+                    } else if (operation.data === 2) {
+                        galleryElement.classList.add("av__gallery--big");
+                    }
+                }
+            });
+        } else if (operation.action === "setAttrViewCardAspectRatio") {
+            Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-av-id="${operation.avID}"]`)).forEach((item: HTMLElement) => {
+                item.querySelectorAll(".av__gallery-cover").forEach(coverItem => {
+                    coverItem.className = "av__gallery-cover av__gallery-cover--" + operation.data;
+                });
+            });
+        } else if (operation.action === "hideAttrViewName") {
+            Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-av-id="${operation.avID}"]`)).forEach((item: HTMLElement) => {
+                if (!operation.data) {
+                    item.querySelector(".av__title").classList.remove("fn__none");
+                } else {
+                    // hide
+                    item.querySelector(".av__title").classList.add("fn__none");
+                }
+                if (item.getAttribute("data-av-type") === "gallery") {
+                    const galleryElement = item.querySelector(".av__gallery");
+                    if (!operation.data) {
+                        galleryElement.classList.remove("av__gallery--top");
+                    } else {
+                        // hide
+                        galleryElement.classList.add("av__gallery--top");
+                    }
+                }
+            });
         } else {
             // 修改表格名 avID 传入到 id 上了 https://github.com/siyuan-note/siyuan/issues/12724
             const avID = operation.action === "setAttrViewName" ? operation.id : operation.avID;
             Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-av-id="${avID}"]`)).forEach((item: HTMLElement) => {
                 item.removeAttribute("data-render");
-                const updateRow = item.querySelector('.av__row[data-need-update="true"]');
+                const updateRow = item.querySelector('[data-need-update="true"]');
                 if (operation.action === "sortAttrViewCol" || operation.action === "sortAttrViewRow") {
                     item.querySelectorAll(".av__cell--active").forEach((item: HTMLElement) => {
                         item.classList.remove("av__cell--active");
@@ -477,15 +516,29 @@ export const refreshAV = (protyle: IProtyle, operation: IOperation) => {
                     });
                     addDragFill(item.querySelector(".av__cell--select"));
                 }
+                if (operation.action === "setAttrViewBlockView") {
+                    const viewTabElement = item.querySelector(`.av__views > .layout-tab-bar > .item[data-id="${operation.id}"]`) as HTMLElement;
+                    if (viewTabElement) {
+                        item.dataset.pageSize = viewTabElement.dataset.page;
+                    }
+                }
                 avRender(item, protyle, () => {
                     const attrElement = document.querySelector(`.b3-dialog--open[data-key="${Constants.DIALOG_ATTR}"] div[data-av-id="${avID}"]`) as HTMLElement;
                     if (attrElement) {
                         // 更新属性面板
                         renderAVAttribute(attrElement.parentElement, attrElement.dataset.nodeId, protyle);
                     } else {
-                        if (operation.action === "insertAttrViewBlock" && updateRow && !item.querySelector(`.av__row[data-id="${updateRow.getAttribute("data-id")}"]`)) {
-                            showMessage(window.siyuan.languages.insertRowTip);
-                            document.querySelector(".av__mask")?.remove();
+                        if (operation.action === "insertAttrViewBlock") {
+                            if (updateRow && !item.querySelector(`[data-id="${updateRow.getAttribute("data-id")}"]`)) {
+                                showMessage(window.siyuan.languages.insertRowTip);
+                                document.querySelector(".av__mask")?.remove();
+                            }
+                            if (item.getAttribute("data-av-type") === "gallery") {
+                                const filesElement = item.querySelector(`.av__gallery-item[data-id="${operation.srcs[0].id}"]`)?.querySelector(".av__gallery-fields");
+                                if (filesElement && filesElement.querySelector('[data-dtype="block"]')?.getAttribute("data-empty") === "true") {
+                                    filesElement.classList.add("av__gallery-fields--edit");
+                                }
+                            }
                         }
                     }
                     item.removeAttribute("data-loading");
