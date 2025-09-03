@@ -184,9 +184,15 @@ export const getEditHTML = (options: {
     <input data-type="fillCreated" type="checkbox" class="b3-switch b3-switch--menu" ${colData.date?.autoFillNow ? "checked" : ""}>
 </label>`;
     }
+    html += `<button class="b3-menu__separator" data-id="separator_3"></button>
+<label class="b3-menu__item">
+    <svg class="b3-menu__icon" style=""><use xlink:href="#iconSoftWrap"></use></svg>
+    <span class="fn__flex-center">${window.siyuan.languages.wrap}</span>
+    <span class="fn__space fn__flex-1"></span>
+    <input type="checkbox" data-type="wrap" class="b3-switch b3-switch--menu"${colData.wrap ? " checked" : ""}>
+</label>`;
     if (colData.type !== "block") {
-        html += `<button class="b3-menu__separator" data-id="separator_3"></button>
-<button class="b3-menu__item" data-type="${colData.hidden ? "showCol" : "hideCol"}">
+        html += `<button class="b3-menu__item" data-type="${colData.hidden ? "showCol" : "hideCol"}">
     <svg class="b3-menu__icon" style=""><use xlink:href="#icon${colData.hidden ? "Eye" : "Eyeoff"}"></use></svg>
     <span class="b3-menu__label">${colData.hidden ? window.siyuan.languages.showCol : window.siyuan.languages.hideCol}</span>
 </button>
@@ -194,7 +200,7 @@ export const getEditHTML = (options: {
     <svg class="b3-menu__icon" style=""><use xlink:href="#iconCopy"></use></svg>
     <span class="b3-menu__label">${window.siyuan.languages.duplicate}</span>
 </button>
-<button class="b3-menu__item" data-type="removeCol">
+<button class="b3-menu__item  b3-menu__item--warning" data-type="removeCol">
     <svg class="b3-menu__icon" style=""><use xlink:href="#iconTrashcan"></use></svg>
     <span class="b3-menu__label">${window.siyuan.languages.delete}</span>
 </button>`;
@@ -374,6 +380,8 @@ export const bindEditEvent = (options: {
                 data: !wrapElement.checked,
                 blockID: options.blockID
             }]);
+            colData.wrap = wrapElement.checked;
+            options.data.view.wrapField = options.data.view.wrapField && wrapElement.checked;
         });
     }
 
@@ -460,11 +468,11 @@ export const bindEditEvent = (options: {
         });
         if (oldValue.avID) {
             fetchPost("/api/av/getAttributeView", {id: oldValue.avID}, (response) => {
-                goSearchElement.querySelector(".b3-menu__accelerator").textContent = oldValue.avID === avID ? window.siyuan.languages.thisDatabase : (response.data.av.name || window.siyuan.languages.title);
+                goSearchElement.querySelector(".b3-menu__accelerator").textContent = oldValue.avID === avID ? window.siyuan.languages.thisDatabase : (response.data.av.name || window.siyuan.languages._kernel[267]);
                 response.data.av.keyValues.find((item: { key: { id: string, name: string } }) => {
                     if (item.key.id === oldValue.backKeyID) {
-                        inputElement.setAttribute("data-old-value", item.key.name || window.siyuan.languages.title);
-                        inputElement.value = item.key.name || window.siyuan.languages.title;
+                        inputElement.setAttribute("data-old-value", item.key.name || window.siyuan.languages._kernel[272]);
+                        inputElement.value = item.key.name || window.siyuan.languages._kernel[272];
                         return true;
                     }
                 });
@@ -563,20 +571,19 @@ const addAttrViewColAnimation = (options: {
     }
     const nodeId = options.blockElement.getAttribute("data-node-id");
     if (options.blockElement.classList.contains("av")) {
-        options.blockElement.querySelectorAll(".av__row").forEach((item, index) => {
+        options.blockElement.querySelectorAll(".av__row").forEach((item) => {
             let previousElement;
             if (options.previousID) {
                 previousElement = item.querySelector(`[data-col-id="${options.previousID}"]`);
             } else {
-                previousElement = item.lastElementChild.previousElementSibling;
+                previousElement = item.querySelector(".av__cell").previousElementSibling;
             }
             let html = "";
-            if (index === 0) {
-                // av__pulse 用于检测是否新增，和 render 中 isPulse 配合弹出菜单
+            if (item.classList.contains("av__row--header")) {
                 html = `<div class="av__cell av__cell--header" draggable="true" data-icon="${options.icon || ""}" data-col-id="${options.id}" data-dtype="${options.type}" data-wrap="false" style="width: 200px;">
     ${options.icon ? unicode2Emoji(options.icon, "av__cellheadericon", true) : `<svg class="av__cellheadericon"><use xlink:href="#${getColIconByType(options.type)}"></use></svg>`}
     <span class="av__celltext fn__flex-1">${options.name}</span>
-    <div class="av__widthdrag av__pulse"></div>
+    <div class="av__widthdrag"></div>
 </div>`;
             } else {
                 html = '<div class="av__cell" style="width: 200px"><span class="av__pulse"></span></div>';
@@ -779,8 +786,47 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
     });
     menu.addSeparator({id: "separator_1"});
 
-    // 行号 类型不参与 排序和筛选
+    // 行号类型不参与筛选和排序
     if (type !== "lineNumber") {
+        if (type !== "mAsset") {
+            menu.addItem({
+                id: "filter",
+                icon: "iconFilter",
+                label: window.siyuan.languages.filter,
+                click() {
+                    fetchPost("/api/av/renderAttributeView", {
+                        id: avID,
+                    }, (response) => {
+                        const avData = response.data as IAV;
+                        let filter: IAVFilter;
+                        avData.view.filters.find((item) => {
+                            if (item.column === colId && item.value.type === type) {
+                                filter = item;
+                                return true;
+                            }
+                        });
+                        let empty = false;
+                        if (!filter) {
+                            empty = true;
+                            filter = {
+                                column: colId,
+                                operator: getDefaultOperatorByType(type),
+                                value: genCellValue(type, ""),
+                            };
+                            avData.view.filters.push(filter);
+                        }
+                        setFilter({
+                            empty,
+                            filter,
+                            protyle,
+                            data: avData,
+                            blockElement: blockElement,
+                            target: blockElement.querySelector(`.av__row--header .av__cell[data-col-id="${colId}"]`),
+                        });
+                    });
+                }
+            });
+        }
         menu.addItem({
             id: "asc",
             icon: "iconUp",
@@ -831,42 +877,6 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
                 });
             }
         });
-        if (type !== "mAsset") {
-            menu.addItem({
-                id: "filter",
-                icon: "iconFilter",
-                label: window.siyuan.languages.filter,
-                click() {
-                    fetchPost("/api/av/renderAttributeView", {
-                        id: avID,
-                    }, (response) => {
-                        const avData = response.data as IAV;
-                        let filter: IAVFilter;
-                        avData.view.filters.find((item) => {
-                            if (item.column === colId && item.value.type === type) {
-                                filter = item;
-                                return true;
-                            }
-                        });
-                        if (!filter) {
-                            filter = {
-                                column: colId,
-                                operator: getDefaultOperatorByType(type),
-                                value: genCellValue(type, ""),
-                            };
-                            avData.view.filters.push(filter);
-                        }
-                        setFilter({
-                            filter,
-                            protyle,
-                            data: avData,
-                            blockElement: blockElement,
-                            target: blockElement.querySelector(`.av__row--header .av__cell[data-col-id="${colId}"]`),
-                        });
-                    });
-                }
-            });
-        }
         menu.addSeparator({id: "separator_2"});
     }
     menu.addItem({
@@ -947,6 +957,18 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
             updateAttrViewCellAnimation(blockElement.querySelector(`.av__row--header .av__cell[data-col-id="${colId}"]`), undefined, {pin: !isPin});
         }
     });
+    menu.addItem({
+        icon: "iconRefresh",
+        label: window.siyuan.languages.syncColWidth,
+        click() {
+            transaction(protyle, [{
+                action: "syncAttrViewTableColWidth",
+                keyID: colId,
+                avID,
+                id: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW),
+            }]);
+        }
+    });
     if (type !== "block") {
         if (type !== "relation") {
             menu.addItem({
@@ -981,21 +1003,25 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
                     if (colData.key.relation?.isTwoWay) {
                         const relResponse = await fetchSyncPost("/api/av/getAttributeView", {id: colData.key.relation.avID});
                         const dialog = new Dialog({
-                            title: window.siyuan.languages.removeCol.replace("${x}", colData.key.name),
+                            title: window.siyuan.languages.removeColConfirm,
                             content: `<div class="b3-dialog__content">
-    ${window.siyuan.languages.confirmRemoveRelationField.replace("${x}", relResponse.data.av.name)}
+    ${window.siyuan.languages.confirmRemoveRelationField
+        .replace("${x}", colData.key.name || window.siyuan.languages._kernel[272])
+        .replace("${y}", relResponse.data.av.name || window.siyuan.languages._kernel[267])
+        .replace("${z}", relResponse.data.av.keyValues.find((item: {key: {id: string}}) => item.key.id === colData.key.relation.backKeyID).key.name || window.siyuan.languages._kernel[272])}
     <div class="fn__hr--b"></div>
-    <button class="fn__block b3-button b3-button--remove" data-action="delete">${window.siyuan.languages.delete}</button>
+    <button class="fn__block b3-button b3-button--remove" data-action="delete">${window.siyuan.languages.removeBothRelationField}</button>
     <div class="fn__hr"></div>
     <button class="fn__block b3-button b3-button--remove" data-action="keep-relation">${window.siyuan.languages.removeButKeepRelationField}</button>
     <div class="fn__hr"></div>
     <button class="fn__block b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
 </div>`,
+                            width: "520px",
                         });
                         dialog.element.addEventListener("click", (event) => {
                             let target = event.target as HTMLElement;
                             const isDispatch = typeof event.detail === "string";
-                            while (target && !target.isSameNode(dialog.element) || isDispatch) {
+                            while (target && target !== dialog.element || isDispatch) {
                                 const action = target.getAttribute("data-action");
                                 if (action === "delete" || (isDispatch && event.detail === "Enter")) {
                                     removeColByMenu({
@@ -1050,31 +1076,7 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
                 });
             }
         });
-        menu.addSeparator({id: "separator_3"});
     }
-    menu.addItem({
-        id: "wrap",
-        label: `<label class="fn__flex"><span class="fn__flex-center">${window.siyuan.languages.wrap}</span><span class="fn__space fn__flex-1"></span>
-<input type="checkbox" class="b3-switch b3-switch--menu"${cellElement.dataset.wrap === "true" ? " checked" : ""}></label>`,
-        bind(element) {
-            const inputElement = element.querySelector("input") as HTMLInputElement;
-            inputElement.addEventListener("change", () => {
-                transaction(protyle, [{
-                    action: "setAttrViewColWrap",
-                    id: colId,
-                    avID,
-                    data: inputElement.checked,
-                    blockID
-                }], [{
-                    action: "setAttrViewColWrap",
-                    id: colId,
-                    avID,
-                    data: !inputElement.checked,
-                    blockID
-                }]);
-            });
-        }
-    });
     const cellRect = cellElement.getBoundingClientRect();
     menu.open({
         x: cellRect.left,
@@ -1820,7 +1822,7 @@ const genColDataByType = (type: TAVCol, id: string, name: string) => {
         template: "",
         type,
         width: "",
-        wrap: false,
+        wrap: undefined,
         calc: null
     };
     return colData;

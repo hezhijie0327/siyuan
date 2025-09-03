@@ -25,11 +25,10 @@ type LayoutTable struct {
 	*BaseLayout
 
 	Columns []*ViewTableColumn `json:"columns"` // 表格列
-	RowIDs  []string           `json:"rowIds"`  // 行 ID，用于自定义排序
-}
 
-func (layoutTable *LayoutTable) GetItemIDs() (ret []string) {
-	return layoutTable.RowIDs
+	// TODO RowIDs 字段已经废弃，计划于 2026 年 6 月 30 日后删除 https://github.com/siyuan-note/siyuan/issues/15194
+	//Deprecated
+	RowIDs []string `json:"rowIds"` // 行 ID，用于自定义排序
 }
 
 func NewLayoutTable() *LayoutTable {
@@ -37,26 +36,21 @@ func NewLayoutTable() *LayoutTable {
 		BaseLayout: &BaseLayout{
 			Spec:     0,
 			ID:       ast.NewNodeID(),
-			Filters:  []*ViewFilter{},
-			Sorts:    []*ViewSort{},
-			PageSize: TableViewDefaultPageSize,
+			ShowIcon: true,
 		},
 	}
 }
 
 // ViewTableColumn 描述了表格列的结构。
 type ViewTableColumn struct {
-	ID string `json:"id"` // 列 ID
+	*BaseField
 
-	Wrap   bool        `json:"wrap"`           // 是否换行
-	Hidden bool        `json:"hidden"`         // 是否隐藏
-	Pin    bool        `json:"pin"`            // 是否固定
-	Width  string      `json:"width"`          // 列宽度
-	Desc   string      `json:"desc,omitempty"` // 列描述
-	Calc   *ColumnCalc `json:"calc,omitempty"` // 计算
+	Pin   bool       `json:"pin"`            // 是否固定
+	Width string     `json:"width"`          // 列宽度
+	Calc  *FieldCalc `json:"calc,omitempty"` // 计算规则
 }
 
-// Table 描述了表格实例的结构。
+// Table 描述了表格视图实例的结构。
 type Table struct {
 	*BaseInstance
 
@@ -69,10 +63,8 @@ type Table struct {
 type TableColumn struct {
 	*BaseInstanceField
 
-	Wrap  bool        `json:"wrap"`  // 是否换行
-	Pin   bool        `json:"pin"`   // 是否固定
-	Width string      `json:"width"` // 列宽度
-	Calc  *ColumnCalc `json:"calc"`  // 计算
+	Pin   bool   `json:"pin"`   // 是否固定
+	Width string `json:"width"` // 列宽度
 }
 
 // TableRow 描述了表格实例行的结构。
@@ -149,6 +141,10 @@ func (table *Table) SetItems(items []Item) {
 	}
 }
 
+func (table *Table) CountItems() int {
+	return len(table.Rows)
+}
+
 func (table *Table) GetFields() (ret []Field) {
 	ret = []Field{}
 	for _, column := range table.Columns {
@@ -157,18 +153,24 @@ func (table *Table) GetFields() (ret []Field) {
 	return ret
 }
 
+func (table *Table) GetField(id string) (ret Field, fieldIndex int) {
+	for _, column := range table.Columns {
+		if column.ID == id {
+			return column, fieldIndex
+		}
+	}
+	return nil, -1
+}
+
+func (table *Table) GetValue(itemID, keyID string) (ret *Value) {
+	for _, row := range table.Rows {
+		if row.ID == itemID {
+			return row.GetValue(keyID)
+		}
+	}
+	return nil
+}
+
 func (*Table) GetType() LayoutType {
 	return LayoutTypeTable
-}
-
-func (table *Table) GetID() string {
-	return table.ID
-}
-
-func (table *Table) Sort(attrView *AttributeView) {
-	sort0(table, attrView)
-}
-
-func (table *Table) Filter(attrView *AttributeView) {
-	filter0(table, attrView)
 }
