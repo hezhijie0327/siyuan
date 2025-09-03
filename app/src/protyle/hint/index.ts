@@ -6,7 +6,7 @@ import {
     focusByWbr,
     getEditorRange,
     getSelectionOffset,
-    getSelectionPosition
+    getSelectionPosition, setLastNodeRange
 } from "../util/selection";
 import {genHintItemHTML, hintEmbed, hintRef, hintSlash} from "./extend";
 import {getSavePath, newFile} from "../../util/newFile";
@@ -439,7 +439,7 @@ ${genHintItemHTML(item)}
             if (!rowElement) {
                 return;
             }
-            const previousID = cellElement.dataset.blockId;
+            const previousID = rowElement.dataset.id;
             const avID = nodeElement.getAttribute("data-av-id");
             let tempElement = document.createElement("div");
             tempElement.innerHTML = value.replace(/<mark>/g, "").replace(/<\/mark>/g, "");
@@ -563,6 +563,13 @@ ${genHintItemHTML(item)}
                         type: "id",
                         color: `${response.data}${Constants.ZWSP}${refIsS ? "s" : "d"}${Constants.ZWSP}${(refIsS ? fileNames[0] : realFileName).substring(0, window.siyuan.config.editor.blockRefDynamicAnchorTextMaxLen)}`
                     });
+                    if (protyle.toolbar.range.endContainer.nodeType === 1 &&
+                        protyle.toolbar.range.endContainer.childNodes[protyle.toolbar.range.endOffset]) {
+                        const refElement = hasPreviousSibling(protyle.toolbar.range.endContainer.childNodes[protyle.toolbar.range.endOffset]) as HTMLElement;
+                        if (refElement && refElement.nodeType === 1 && refElement.getAttribute("data-type") === "block-ref") {
+                            setLastNodeRange(refElement as HTMLElement, protyle.toolbar.range, false);
+                        }
+                    }
                     protyle.toolbar.range.collapse(false);
                 });
             });
@@ -597,6 +604,13 @@ ${genHintItemHTML(item)}
                 type: "id",
                 color: `${tempElement.getAttribute("data-id")}${Constants.ZWSP}${tempElement.getAttribute("data-subtype")}${Constants.ZWSP}${tempElement.textContent}`
             });
+            if (protyle.toolbar.range.endContainer.nodeType === 1 &&
+                protyle.toolbar.range.endContainer.childNodes[protyle.toolbar.range.endOffset]) {
+                const refElement = hasPreviousSibling(protyle.toolbar.range.endContainer.childNodes[protyle.toolbar.range.endOffset]) as HTMLElement;
+                if (refElement && refElement.nodeType === 1 && refElement.getAttribute("data-type") === "block-ref") {
+                    setLastNodeRange(refElement as HTMLElement, protyle.toolbar.range, false);
+                }
+            }
             protyle.toolbar.range.collapse(false);
             return;
         } else if (this.splitChar === ":") {
@@ -713,7 +727,7 @@ ${genHintItemHTML(item)}
                 focusByRange(range);
                 this.genEmojiHTML(protyle);
                 return;
-            } else if (value.indexOf("style") > -1) {
+            } else if (value.startsWith("style")) {
                 range.deleteContents();
                 this.fixImageCursor(range);
                 nodeElement.setAttribute("style", value.split(Constants.ZWSP)[1] || "");
@@ -844,7 +858,11 @@ ${genHintItemHTML(item)}
                     focusBlock(nodeElement);
                 } else if (nodeElement.classList.contains("av")) {
                     avRender(nodeElement, protyle, () => {
-                        (nodeElement.querySelector(".av__title") as HTMLInputElement).focus();
+                        const titleHTMLElement = nodeElement.querySelector(".av__title") as HTMLInputElement;
+                        titleHTMLElement.focus();
+                        range.setStart(titleHTMLElement, 0);
+                        range.collapse(true);
+                        focusByRange(range);
                     });
                 } else {
                     focusByWbr(nodeElement, range);
