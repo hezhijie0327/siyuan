@@ -66,7 +66,7 @@ import {openGlobalSearch} from "../../search/util";
 import {popSearch} from "../../mobile/menu/search";
 /// #endif
 import {BlockPanel} from "../../block/Panel";
-import {copyPlainText, isInIOS, isMac, isOnlyMeta, readClipboard} from "../util/compatibility";
+import {copyPlainText, isInIOS, isMac, isOnlyMeta, readClipboard, encodeBase64} from "../util/compatibility";
 import {MenuItem} from "../../menus/Menu";
 import {fetchPost} from "../../util/fetch";
 import {onGet} from "../util/onGet";
@@ -318,16 +318,25 @@ export class WYSIWYG {
                     html = "[";
                     cellElements.forEach((item: HTMLElement, index) => {
                         const cellText = getCellText(item);
-                        if (index === 0 || !cellElements[index - 1].isSameNode(item.previousElementSibling)) {
+                        if (index === 0 || (
+                            cellElements[index - 1] !== item.previousElementSibling &&
+                            !(item.previousElementSibling?.classList.contains("av__colsticky") && !cellElements[index - 1].nextElementSibling &&
+                                cellElements[index - 1].parentElement === item.previousElementSibling)
+                        )) {
                             html += "[";
                         }
                         html += JSON.stringify(genCellValueByElement(getTypeByCellElement(item), item)) + ",";
-                        if (index === cellElements.length - 1 || !cellElements[index + 1].isSameNode(item.nextElementSibling)) {
+                        if (index === cellElements.length - 1 || (
+                            cellElements[index + 1] !== item.nextElementSibling &&
+                            !(!item.nextElementSibling && item.parentElement.nextElementSibling === cellElements[index + 1])
+                        )) {
                             html = html.substring(0, html.length - 1) + "],";
+                            textPlain += cellText + "\n";
+                        } else {
+                            textPlain += cellText + "\t";
                         }
-                        textPlain += cellText + ((cellElements[index + 1] && item.nextElementSibling && item.nextElementSibling.isSameNode(cellElements[index + 1])) ? "\t" : "\n\n");
                     });
-                    textPlain = textPlain.substring(0, textPlain.length - 2);
+                    textPlain = textPlain.substring(0, textPlain.length - 1);
                     html = html.substring(0, html.length - 1) + "]";
                 }
             } else if (selectTableElement) {
@@ -348,12 +357,12 @@ export class WYSIWYG {
                 });
                 selectCellElements.forEach((item, index) => {
                     if (index === 0 || !item.previousElementSibling ||
-                        !item.previousElementSibling.isSameNode(selectCellElements[index - 1])) {
+                        item.previousElementSibling !== selectCellElements[index - 1]) {
                         html += "<tr>";
                     }
                     html += item.outerHTML;
                     if (!item.nextElementSibling || !selectCellElements[index + 1] ||
-                        !item.nextElementSibling.isSameNode(selectCellElements[index + 1])) {
+                        item.nextElementSibling !== selectCellElements[index + 1]) {
                         html += "</tr>";
                     }
                 });
@@ -365,9 +374,10 @@ export class WYSIWYG {
                 const selectTypes = protyle.toolbar.getCurrentType(range);
                 const spanElement = hasClosestByTag(range.startContainer, "SPAN");
                 const headingElement = hasClosestByAttribute(range.startContainer, "data-type", "NodeHeading");
+                const matchHeading = headingElement && headingElement.textContent.replace(Constants.ZWSP, "") === range.toString();
                 if ((selectTypes.length > 0 && spanElement && spanElement.textContent.replace(Constants.ZWSP, "") === range.toString()) ||
-                    (headingElement && headingElement.textContent.replace(Constants.ZWSP, "") === range.toString())) {
-                    if (headingElement) {
+                    matchHeading) {
+                    if (matchHeading) {
                         // 复制标题 https://github.com/siyuan-note/insider/issues/297
                         tempElement.append(headingElement.cloneNode(true));
                     } else if (!["DIV", "TD", "TH", "TR"].includes(range.startContainer.parentElement.tagName)) {
@@ -386,7 +396,7 @@ export class WYSIWYG {
                     textPlain = selectImgElement.querySelector("img").getAttribute("data-src");
                 } else if (selectTypes.length > 0 && range.startContainer.nodeType === 3 &&
                     range.startContainer.parentElement.tagName === "SPAN" &&
-                    range.startContainer.parentElement.isSameNode(range.endContainer.parentElement)) {
+                    range.startContainer.parentElement === range.endContainer.parentElement) {
                     // 复制粗体等字体中的一部分
                     const attributes = range.startContainer.parentElement.attributes;
                     const spanElement = document.createElement("span");
@@ -417,6 +427,7 @@ export class WYSIWYG {
                         if (isEndOfBlock(range)) {
                             textPlain = textPlain.replace(/\n$/, "");
                         }
+                        html = textPlain;
                     } else if (hasClosestByTag(range.startContainer, "TD") || hasClosestByTag(range.startContainer, "TH")) {
                         tempElement.innerHTML = tempElement.innerHTML.replace(/<br>/g, "\n").replace(/<br\/>/g, "\n");
                         textPlain = tempElement.textContent.endsWith("\n") ? tempElement.textContent.replace(/\n$/, "") : tempElement.textContent;
@@ -433,10 +444,15 @@ export class WYSIWYG {
                 // Remove ZWSP when copying inline elements https://github.com/siyuan-note/siyuan/issues/13882
                 .replace(new RegExp(Constants.ZWSP, "g"), "");
             event.clipboardData.setData("text/plain", textPlain);
-            event.clipboardData.setData("text/html", selectTableElement ? html : protyle.lute.BlockDOM2HTML(selectAVElement ? textPlain : html));
+
+            // 设置 text/siyuan 数据
             enableLuteMarkdownSyntax(protyle);
-            event.clipboardData.setData("text/siyuan", selectTableElement ? protyle.lute.HTML2BlockDOM(html) : html);
+            const siyuanHTML = selectTableElement ? protyle.lute.HTML2BlockDOM(html) : html;
+            event.clipboardData.setData("text/siyuan", siyuanHTML);
             restoreLuteMarkdownSyntax(protyle);
+
+            // 在 text/html 中插入注释节点，用于右键菜单粘贴时获取 text/siyuan 数据
+            event.clipboardData.setData("text/html", `<!--data-siyuan='${encodeBase64(siyuanHTML)}'-->` + (selectTableElement ? html : protyle.lute.BlockDOM2HTML(selectAVElement ? textPlain : html)));
         });
 
         this.element.addEventListener("mousedown", (event: MouseEvent) => {
@@ -445,6 +461,8 @@ export class WYSIWYG {
                 // 右键
                 return;
             }
+            const documentSelf = document;
+            documentSelf.onmouseup = null;
             let target = event.target as HTMLElement;
             let nodeElement = hasClosestBlock(target) as HTMLElement;
             const hasSelectClassElement = this.element.querySelector(".protyle-wysiwyg--select");
@@ -490,7 +508,8 @@ export class WYSIWYG {
                     previousList.concat(nextList).forEach(item => {
                         item.classList.add("av__gallery-item--select");
                     });
-                } else if (startElement && endElement && !startElement.isSameNode(endElement)) {
+                    event.preventDefault();
+                } else if (startElement && endElement && startElement !== endElement) {
                     let toDown = true;
                     const startRect = startElement.getBoundingClientRect();
                     const endRect = endElement.getBoundingClientRect();
@@ -578,11 +597,10 @@ export class WYSIWYG {
                             focusBlock(selectElements[0], protyle.wysiwyg.element, false);
                         }
                     }
+                    event.preventDefault();
                 }
-                event.preventDefault();
                 return;
             }
-
             if (isOnlyMeta(event) && !event.shiftKey && !event.altKey) {
                 let ctrlElement = nodeElement;
                 if (!hasSelectClassElement && galleryItemElement) {
@@ -621,23 +639,31 @@ export class WYSIWYG {
             }
 
             // https://github.com/siyuan-note/siyuan/issues/15100
-            if (galleryItemElement) {
+            if (galleryItemElement && !hasClosestByAttribute(target, "data-type", "av-gallery-more")) {
+                documentSelf.onmouseup = () => {
+                    documentSelf.onmousemove = null;
+                    documentSelf.onmouseup = null;
+                    documentSelf.ondragstart = null;
+                    documentSelf.onselectstart = null;
+                    documentSelf.onselect = null;
+                    clearSelect(["galleryItem"], protyle.wysiwyg.element);
+                    return false;
+                };
                 return;
             }
-
+            const avDragFillElement = hasClosestByClassName(target, "av__drag-fill");
             // https://github.com/siyuan-note/siyuan/issues/3026
             hideElements(["select"], protyle);
             if (hasClosestByAttribute(target, "data-type", "av-gallery-more")) {
                 clearSelect(["img", "row", "cell"], protyle.wysiwyg.element);
-            } else if (!hasClosestByClassName(target, "av__firstcol")) {
+            } else if (!hasClosestByClassName(target, "av__firstcol") && !avDragFillElement) {
                 clearSelect(["img", "av"], protyle.wysiwyg.element);
             }
 
-            if (hasClosestByClassName(target, "protyle-action") ||
+            if ((hasClosestByClassName(target, "protyle-action") && !hasClosestByClassName(target, "code-block")) ||
                 (hasClosestByClassName(target, "av__cell--header") && !hasClosestByClassName(target, "av__widthdrag"))) {
                 return;
             }
-            const documentSelf = document;
             const wysiwygRect = protyle.wysiwyg.element.getBoundingClientRect();
             const wysiwygStyle = window.getComputedStyle(protyle.wysiwyg.element);
             const mostLeft = wysiwygRect.left + (parseInt(wysiwygStyle.paddingLeft) || 24) + 1;
@@ -698,13 +724,12 @@ export class WYSIWYG {
                 return;
             }
             // av drag fill
-            const avDragFillElement = hasClosestByClassName(target, "av__drag-fill");
             if (!protyle.disabled && avDragFillElement) {
                 if (!nodeElement) {
                     return;
                 }
                 const originData: { [key: string]: IAVCellValue[] } = {};
-                let lastOriginCellElement;
+                let lastOriginCellElement: HTMLElement;
                 const originCellIds: string[] = [];
                 nodeElement.querySelectorAll(".av__cell--active").forEach((item: HTMLElement) => {
                     const rowElement = hasClosestByClassName(item, "av__row");
@@ -723,7 +748,7 @@ export class WYSIWYG {
                 let lastCellElement: HTMLElement;
                 documentSelf.onmousemove = (moveEvent: MouseEvent) => {
                     const tempCellElement = hasClosestByClassName(moveEvent.target as HTMLElement, "av__cell") as HTMLElement;
-                    if (moveAVCellElement && tempCellElement && tempCellElement.isSameNode(moveAVCellElement)) {
+                    if (moveAVCellElement && tempCellElement && (tempCellElement === moveAVCellElement)) {
                         return;
                     }
                     moveAVCellElement = tempCellElement;
@@ -759,7 +784,7 @@ export class WYSIWYG {
                     documentSelf.onselectstart = null;
                     documentSelf.onselect = null;
                     if (lastCellElement) {
-                        dragFillCellsValue(protyle, nodeElement, originData, originCellIds);
+                        dragFillCellsValue(protyle, nodeElement, originData, originCellIds, lastOriginCellElement);
                         const allActiveCellsElement = nodeElement.querySelectorAll(".av__cell--active");
                         addDragFill(allActiveCellsElement[allActiveCellsElement.length - 1]);
                     }
@@ -786,6 +811,7 @@ export class WYSIWYG {
                 let lastCellElement: HTMLElement;
                 const nodeRect = nodeElement.getBoundingClientRect();
                 const scrollElement = nodeElement.querySelector(".av__scroll");
+                const bodyElement = hasClosestByClassName(avCellElement, "av__body") as HTMLElement;
                 documentSelf.onmousemove = (moveEvent: MouseEvent) => {
                     const tempCellElement = hasClosestByClassName(moveEvent.target as HTMLElement, "av__cell") as HTMLElement;
                     if (scrollElement.scrollWidth > scrollElement.clientWidth + 2) {
@@ -800,7 +826,8 @@ export class WYSIWYG {
                             protyle.contentElement.scrollTop += 5;
                         }
                     }
-                    if (moveSelectCellElement && tempCellElement && tempCellElement.isSameNode(moveSelectCellElement)) {
+                    if (bodyElement !== hasClosestByClassName(tempCellElement, "av__body") ||
+                        (moveSelectCellElement && tempCellElement && tempCellElement === moveSelectCellElement)) {
                         return;
                     }
                     if (tempCellElement && tempCellElement.dataset.id && (event.clientX !== moveEvent.clientX || event.clientY !== moveEvent.clientY)) {
@@ -808,7 +835,7 @@ export class WYSIWYG {
                         nodeElement.querySelectorAll(".av__cell--active").forEach((item: HTMLElement) => {
                             item.classList.remove("av__cell--active");
                         });
-                        nodeElement.querySelectorAll(".av__row").forEach((rowElement: HTMLElement, index: number) => {
+                        bodyElement.querySelectorAll(".av__row").forEach((rowElement: HTMLElement, index: number) => {
                             if (index >= Math.min(originIndex.rowIndex, newIndex.rowIndex) && index <= Math.max(originIndex.rowIndex, newIndex.rowIndex)) {
                                 rowElement.querySelectorAll(".av__cell").forEach((cellElement: HTMLElement, cellIndex: number) => {
                                     if (cellIndex >= Math.min(originIndex.celIndex, newIndex.celIndex) && cellIndex <= Math.max(originIndex.celIndex, newIndex.celIndex)) {
@@ -998,14 +1025,14 @@ export class WYSIWYG {
                         moveTarget.classList.remove("fn__none");
                         moveTarget = hasClosestByTag(pointElement, "TH") || hasClosestByTag(pointElement, "TD");
                     }
-                    if (moveTarget && moveTarget.isSameNode(target)) {
+                    if (moveTarget && moveTarget === target) {
                         tableBlockElement.querySelector(".table__select").removeAttribute("style");
                         protyle.wysiwyg.element.classList.remove("protyle-wysiwyg--hiderange");
                         moveCellElement = moveTarget;
                         return false;
                     }
                     if (moveTarget && (moveTarget.tagName === "TH" || moveTarget.tagName === "TD") &&
-                        (!moveCellElement || !moveCellElement.isSameNode(moveTarget))) {
+                        (!moveCellElement || moveCellElement !== moveTarget)) {
                         // @ts-ignore
                         tableBlockElement.firstElementChild.style.webkitUserModify = "read-only";
                         let width = target.offsetLeft + target.clientWidth - moveTarget.offsetLeft;
@@ -1127,7 +1154,7 @@ export class WYSIWYG {
                 }
                 protyle.selectElement.setAttribute("style", `background-color: ${protyle.selectElement.style.backgroundColor};top:${newTop}px;height:${newHeight}px;left:${newLeft + 2}px;width:${newWidth - 2}px;`);
                 const newMouseElement = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-                if (mouseElement && mouseElement.isSameNode(newMouseElement) && !mouseElement.classList.contains("protyle-wysiwyg") &&
+                if (mouseElement && mouseElement === newMouseElement && !mouseElement.classList.contains("protyle-wysiwyg") &&
                     !mouseElement.classList.contains("list") && !mouseElement.classList.contains("bq") && !mouseElement.classList.contains("sb")) {
                     // 性能优化，同一个p元素不进行选中计算
                     return;
@@ -1295,7 +1322,7 @@ export class WYSIWYG {
                                         tableBlockElement.querySelectorAll("th, td").forEach((item: HTMLTableCellElement, index: number) => {
                                             if (item.classList.contains("fn__none")) {
                                                 // 合并的元素中间有 fn__none 的元素
-                                                if (item.previousElementSibling && item.previousElementSibling.isSameNode(selectCellElements[selectCellElements.length - 1])) {
+                                                if (item.previousElementSibling && item.previousElementSibling === selectCellElements[selectCellElements.length - 1]) {
                                                     selectCellElements.push(item);
                                                     if (!isTHead && item.parentElement.parentElement.tagName === "THEAD") {
                                                         isTHead = true;
@@ -1336,7 +1363,7 @@ export class WYSIWYG {
                                         let cellElement = selectCellElements[0];
                                         let colSpan = cellElement.colSpan;
                                         let index = 1;
-                                        while (cellElement.nextElementSibling && cellElement.nextElementSibling.isSameNode(selectCellElements[index])) {
+                                        while (cellElement.nextElementSibling && cellElement.nextElementSibling === selectCellElements[index]) {
                                             cellElement = cellElement.nextElementSibling as HTMLTableCellElement;
                                             if (!cellElement.classList.contains("fn__none")) { // https://github.com/siyuan-note/insider/issues/1007#issuecomment-1046195608
                                                 colSpan += cellElement.colSpan;
@@ -1353,7 +1380,7 @@ export class WYSIWYG {
                                             }
                                             html += cellHTML + ((!cellHTML || index === selectCellElements.length - 1) ? "" : "<br>");
                                             if (index !== 0) {
-                                                if (!rowElement.isSameNode(item.parentElement)) {
+                                                if (rowElement !== item.parentElement) {
                                                     if (!item.classList.contains("fn__none")) { // https://github.com/siyuan-note/insider/issues/1011
                                                         rowSpan += item.rowSpan;
                                                     }
@@ -1535,7 +1562,7 @@ export class WYSIWYG {
                                     selectCellElements.forEach((item, index) => {
                                         textPlain += item.textContent.trim() + "\t";
                                         if (!item.nextElementSibling || !selectCellElements[index + 1] ||
-                                            !item.nextElementSibling.isSameNode(selectCellElements[index + 1])) {
+                                            item.nextElementSibling !== selectCellElements[index + 1]) {
                                             textPlain = textPlain.slice(0, -1) + "\n";
                                         }
                                     });
@@ -1632,6 +1659,12 @@ export class WYSIWYG {
                     }
                     if (selectElement.length > 0) {
                         range.collapse(true);
+                        if (range.commonAncestorContainer.nodeType === 1 &&
+                            range.startContainer.childNodes[range.startOffset] &&
+                            range.startContainer.childNodes[range.startOffset].nodeType === 1 &&
+                            (range.commonAncestorContainer as HTMLElement).classList.contains("protyle-wysiwyg")) {
+                            focusBlock(range.startContainer.childNodes[range.startOffset] as Element);
+                        }
                         return;
                     }
                     const startBlockElement = hasClosestBlock(range.startContainer);
@@ -1651,7 +1684,7 @@ export class WYSIWYG {
                     } else {
                         endBlockElement = hasClosestBlock(range.endContainer);
                     }
-                    if (startBlockElement && endBlockElement && !endBlockElement.isSameNode(startBlockElement)) {
+                    if (startBlockElement && endBlockElement && endBlockElement !== startBlockElement) {
                         if ((range.startContainer.nodeType === 1 && (range.startContainer as HTMLElement).tagName === "DIV" && (range.startContainer as HTMLElement).classList.contains("protyle-attr")) ||
                             event.clientY > mouseUpEvent.clientY) {
                             setFirstNodeRange(getContenteditableElement(endBlockElement), range);
@@ -1671,7 +1704,7 @@ export class WYSIWYG {
         protyle.observer = new ResizeObserver(() => {
             const contentRect = protyle.contentElement.getBoundingClientRect();
             protyle.wysiwyg.element.querySelectorAll(".av").forEach((item: HTMLElement) => {
-                if (item.querySelector(".av__title")) {
+                if (item.querySelector(".av__scroll")) {
                     stickyRow(item, contentRect, "all");
                 }
             });
@@ -1682,7 +1715,7 @@ export class WYSIWYG {
                 return;
             }
             const range = getSelection().getRangeAt(0);
-            if (this.element.isSameNode(range.startContainer) || this.element.contains(range.startContainer)) {
+            if (this.element === range.startContainer || this.element.contains(range.startContainer)) {
                 protyle.toolbar.range = range;
             }
         });
@@ -1781,12 +1814,12 @@ export class WYSIWYG {
                 nodeElement.setAttribute("updated", dayjs().format("YYYYMMDDHHmmss"));
                 selectCellElements.forEach((item, index) => {
                     if (index === 0 || !item.previousElementSibling ||
-                        !item.previousElementSibling.isSameNode(selectCellElements[index - 1])) {
+                        item.previousElementSibling !== selectCellElements[index - 1]) {
                         html += "<tr>";
                     }
                     html += item.outerHTML;
                     if (!item.nextElementSibling || !selectCellElements[index + 1] ||
-                        !item.nextElementSibling.isSameNode(selectCellElements[index + 1])) {
+                        item.nextElementSibling !== selectCellElements[index + 1]) {
                         html += "</tr>";
                     }
                     item.innerHTML = "";
@@ -1811,7 +1844,7 @@ export class WYSIWYG {
                 if (headElement && range.toString() === headElement.firstElementChild.textContent) {
                     tempElement.insertAdjacentHTML("afterbegin", headElement.firstElementChild.innerHTML);
                     headElement.firstElementChild.innerHTML = "";
-                } else if (range.toString() !== "" && startContainer.isSameNode(range.endContainer) &&
+                } else if (range.toString() !== "" && startContainer === range.endContainer &&
                     range.startContainer.nodeType === 3 &&
                     // 需使用 wholeText https://github.com/siyuan-note/siyuan/issues/14339
                     range.endOffset === (range.endContainer as Text).wholeText.length &&
@@ -1823,7 +1856,7 @@ export class WYSIWYG {
                     tempElement.append(selectImgElement);
                 } else if (range.startContainer.nodeType === 3 && range.startContainer.parentElement.tagName === "SPAN" &&
                     range.startContainer.parentElement.getAttribute("data-type") &&
-                    range.startContainer.parentElement.isSameNode(range.endContainer.parentElement)) {
+                    range.startContainer.parentElement === range.endContainer.parentElement) {
                     // 剪切粗体等字体中的一部分
                     const spanElement = range.startContainer.parentElement;
                     const attributes = spanElement.attributes;
@@ -1916,10 +1949,15 @@ export class WYSIWYG {
             }
             textPlain = textPlain.replace(/\u00A0/g, " "); // Replace non-breaking spaces with normal spaces when copying https://github.com/siyuan-note/siyuan/issues/9382
             event.clipboardData.setData("text/plain", textPlain);
-            event.clipboardData.setData("text/html", selectTableElement ? html : protyle.lute.BlockDOM2HTML(selectAVElement ? textPlain : html));
+
+            // 设置 text/siyuan 数据
             enableLuteMarkdownSyntax(protyle);
-            event.clipboardData.setData("text/siyuan", selectTableElement ? protyle.lute.HTML2BlockDOM(html) : html);
+            const siyuanHTML = selectTableElement ? protyle.lute.HTML2BlockDOM(html) : html;
+            event.clipboardData.setData("text/siyuan", siyuanHTML);
             restoreLuteMarkdownSyntax(protyle);
+
+            // 在 text/html 中插入注释节点，用于右键菜单粘贴时获取 text/siyuan 数据
+            event.clipboardData.setData("text/html", `<!--data-siyuan='${encodeBase64(siyuanHTML)}'-->` + (selectTableElement ? html : protyle.lute.BlockDOM2HTML(selectAVElement ? textPlain : html)));
         });
 
         let beforeContextmenuRange: Range;
@@ -1960,19 +1998,17 @@ export class WYSIWYG {
             }
             const avGalleryItemElement = hasClosestByClassName(target, "av__gallery-item");
             if (avGalleryItemElement) {
-                const menu = openGalleryItemMenu({
+                openGalleryItemMenu({
                     target: avGalleryItemElement.querySelector(".protyle-icon--last"),
-                    blockElement: nodeElement,
                     protyle,
-                    returnMenu: true
-                });
-                menu.open({
-                    x: event.clientX,
-                    y: event.clientY
+                    position: {
+                        x: event.clientX,
+                        y: event.clientY
+                    }
                 });
                 event.stopPropagation();
                 event.preventDefault();
-                return;
+                return false;
             }
             const avCellElement = hasClosestByClassName(target, "av__cell");
             if (avCellElement) {
@@ -2454,10 +2490,10 @@ export class WYSIWYG {
                 if (item.tagName !== "DIV") {
                     return;
                 }
-                if (!tableElement || !item.isSameNode(tableElement)) {
+                if (!tableElement || item !== tableElement) {
                     item.querySelector(".table__select").removeAttribute("style");
                 }
-                if (tableElement && tableElement.isSameNode(item) && item.querySelector(".table__select").getAttribute("style")) {
+                if (tableElement && tableElement === item && item.querySelector(".table__select").getAttribute("style")) {
                     // 防止合并单元格的菜单消失
                     event.stopPropagation();
                 }

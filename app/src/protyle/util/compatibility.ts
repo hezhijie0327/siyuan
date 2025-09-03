@@ -1,6 +1,47 @@
 import {focusByRange} from "./selection";
-import {fetchPost} from "../../util/fetch";
+import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {Constants} from "../../constants";
+/// #if !BROWSER
+import {clipboard} from "electron";
+/// #endif
+
+export const encodeBase64 = (text: string): string => {
+    if (typeof Buffer !== "undefined") {
+        return Buffer.from(text, "utf8").toString("base64");
+    } else {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(text);
+        let binary = "";
+        const chunkSize = 0x8000; // 避免栈溢出
+
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+            binary += String.fromCharCode(...chunk);
+        }
+
+        return btoa(binary);
+    }
+};
+
+const getSiyuanHTML = (text: IClipboardData) => {
+    const siyuanMatch = text.textHTML.match(/<!--data-siyuan='([^']+)'-->/);
+    if (siyuanMatch) {
+        try {
+            if (typeof Buffer !== "undefined") {
+                const decodedBytes = Buffer.from(siyuanMatch[1], "base64");
+                text.siyuanHTML = decodedBytes.toString("utf8");
+            } else {
+                const decoder = new TextDecoder();
+                const bytes = Uint8Array.from(atob(siyuanMatch[1]), char => char.charCodeAt(0));
+                text.siyuanHTML = decoder.decode(bytes);
+            }
+            // 移除注释节点，保持原有的 text/html 内容
+            text.textHTML = text.textHTML.replace(/<!--data-siyuan='[^']+'-->/, "");
+        } catch (e) {
+            console.log("Failed to decode siyuan data from HTML comment:", e);
+        }
+    }
+};
 
 export const openByMobile = (uri: string) => {
     if (!uri) {
@@ -54,18 +95,36 @@ export const readText = () => {
     return navigator.clipboard.readText();
 };
 
+/// #if !BROWSER
+export const getLocalFiles = async () => {
+    // 不再支持 PC 浏览器 https://github.com/siyuan-note/siyuan/issues/7206
+    let localFiles: string[] = [];
+    if ("darwin" === window.siyuan.config.system.os) {
+        const xmlString = clipboard.read("NSFilenamesPboardType");
+        const domParser = new DOMParser();
+        const xmlDom = domParser.parseFromString(xmlString, "application/xml");
+        Array.from(xmlDom.getElementsByTagName("string")).forEach(item => {
+            localFiles.push(item.childNodes[0].nodeValue);
+        });
+    } else {
+        const xmlString = await fetchSyncPost("/api/clipboard/readFilePaths", {});
+        if (xmlString.data.length > 0) {
+            localFiles = xmlString.data;
+        }
+    }
+    return localFiles;
+};
+/// #endif
+
 export const readClipboard = async () => {
-    const text: {
-        textHTML?: string,
-        textPlain?: string,
-        files?: File[],
-    } = {textPlain: "", textHTML: ""};
+    const text: IClipboardData = {textPlain: "", textHTML: "", siyuanHTML: ""};
     try {
         const clipboardContents = await navigator.clipboard.read();
         for (const item of clipboardContents) {
             if (item.types.includes("text/html")) {
                 const blob = await item.getType("text/html");
                 text.textHTML = await blob.text();
+                getSiyuanHTML(text);
             }
             if (item.types.includes("text/plain")) {
                 const blob = await item.getType("text/plain");
@@ -76,14 +135,21 @@ export const readClipboard = async () => {
                 text.files = [new File([blob], "image.png", {type: "image/png", lastModified: Date.now()})];
             }
         }
+        /// #if !BROWSER
+        if (!text.textHTML && !text.files) {
+            text.localFiles = await getLocalFiles();
+        }
+        /// #endif
         return text;
     } catch (e) {
         if (isInAndroid()) {
             text.textPlain = window.JSAndroid.readClipboard();
             text.textHTML = window.JSAndroid.readHTMLClipboard();
+            getSiyuanHTML(text);
         } else if (isInHarmony()) {
             text.textPlain = window.JSHarmony.readClipboard();
             text.textHTML = window.JSHarmony.readHTMLClipboard();
+            getSiyuanHTML(text);
         }
         return text;
     }

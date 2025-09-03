@@ -66,6 +66,7 @@ import {showMessage} from "../dialog/message";
 import {img3115} from "../boot/compatibleVersion";
 import {hideTooltip} from "../dialog/tooltip";
 import {clearSelect} from "../protyle/util/clearSelect";
+import {scrollCenter} from "../util/highlightById";
 
 const renderAssetList = (element: Element, k: string, position: IPosition, exts: string[] = []) => {
     fetchPost("/api/search/searchAsset", {
@@ -620,7 +621,7 @@ export const refMenu = (protyle: IProtyle, element: HTMLElement) => {
             }
         });
         window.siyuan.menus.menu.append(new MenuItem({
-            id: "iconRefresh",
+            id: "turnInto",
             label: window.siyuan.languages.turnInto,
             icon: "iconRefresh",
             submenu
@@ -1020,7 +1021,7 @@ export const zoomOut = (options: {
                 }
                 focusBlock(showElement);
                 const resizeObserver = new ResizeObserver(() => {
-                    showElement.scrollIntoView();
+                    scrollCenter(options.protyle, focusElement, true, "smooth");
                 });
                 resizeObserver.observe(options.protyle.wysiwyg.element);
                 setTimeout(() => {
@@ -2110,7 +2111,7 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
                     if (prueTrElement) {
                         const tbodyElement = nodeElement.querySelector("tbody");
                         const theadElement = nodeElement.querySelector("thead");
-                        while (!prueTrElement.isSameNode(theadElement.lastElementChild)) {
+                        while (prueTrElement !== theadElement.lastElementChild) {
                             tbodyElement.insertAdjacentElement("afterbegin", theadElement.lastElementChild);
                         }
                     }
@@ -2121,14 +2122,14 @@ export const tableMenu = (protyle: IProtyle, nodeElement: Element, cellElement: 
         });
     }
     const thMatchElement = nodeElement.querySelectorAll("col")[colIndex];
-    if (thMatchElement.style.width || thMatchElement.style.minWidth) {
+    if (thMatchElement.style.width || thMatchElement.style.minWidth !== "60px") {
         otherMenus.push({
             id: "useDefaultWidth",
             label: window.siyuan.languages.useDefaultWidth,
             click: () => {
                 const html = nodeElement.outerHTML;
                 thMatchElement.style.width = "";
-                thMatchElement.style.minWidth = "";
+                thMatchElement.style.minWidth = "60px";
                 updateTransaction(protyle, nodeElement.getAttribute("data-node-id"), nodeElement.outerHTML, html);
             }
         });
