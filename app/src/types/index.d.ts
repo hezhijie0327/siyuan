@@ -58,7 +58,8 @@ type TOperation =
     | "setAttrViewFitImage"
     | "setAttrViewShowIcon"
     | "setAttrViewWrapField"
-    | "setAttrViewColDate"
+    | "setAttrViewColDateFillCreated"
+    | "setAttrViewColDateFillSpecificTime"
     | "setAttrViewViewDesc"
     | "setAttrViewColDesc"
     | "setAttrViewBlockView"
@@ -201,9 +202,15 @@ interface Window {
             strict: (errorCode: string) => "ignore" | "warn";
         }): string;
     };
+    zenuml: object,
     mermaid: {
         initialize(options: any): void,
-        render(id: string, text: string): { svg: string }
+        render(id: string, text: string): { svg: string },
+        registerExternalDiagrams(ex: object[]): void,
+        registerIconPacks(options: {
+            name: string,
+            loader(): Promise<Response>
+        }[]): void
     };
     plantumlEncoder: {
         encode(options: string): string,
@@ -369,6 +376,7 @@ interface ISnippet {
     type: string;
     enabled: boolean;
     content: string;
+    disabledInPublish: boolean;
 }
 
 interface IInbox {
@@ -897,6 +905,7 @@ interface IAVGallery extends IAVView {
 interface IAVFilter {
     column: string,
     operator: TAVFilterOperator,
+    quantifier?: string,
     value: IAVCellValue,
     relativeDate?: relativeDate
     relativeDate2?: relativeDate
@@ -940,6 +949,7 @@ interface IAVColumn {
     calc: IAVCalc,
     date?: {
         autoFillNow: boolean,
+        fillSpecificTime: boolean,
     }
     // 选项列表
     options?: {

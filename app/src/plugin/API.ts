@@ -236,15 +236,28 @@ const getActiveEditor = (wndActive = true) => {
     if (!editor && !wndActive) {
         let activeTime = 0;
         allEditor.forEach(item => {
-            const headerElement = item.protyle?.model.parent.headElement;
-            if (headerElement && headerElement.classList.contains("item--focus") && parseInt(headerElement.dataset.activetime) > activeTime) {
-                activeTime = parseInt(headerElement.dataset.activetime);
+            let headerElement = item.protyle.model?.parent.headElement;
+            if (!headerElement && item.protyle.element.getBoundingClientRect().height > 0) {
+                const tabBodyElement = item.protyle.element.closest(".fn__flex-1[data-id]");
+                if (tabBodyElement) {
+                    headerElement = document.querySelector(`.layout-tab-bar .item[data-id="${tabBodyElement.getAttribute("data-id")}"]`);
+                }
+            }
+            if (headerElement) {
+                if (headerElement.classList.contains("item--focus") && parseInt(headerElement.dataset.activetime) > activeTime) {
+                    activeTime = parseInt(headerElement.dataset.activetime);
+                    editor = item;
+                }
+            } else if (item.protyle.element.getBoundingClientRect().height > 0) {
                 editor = item;
             }
         });
     }
     /// #else
     editor = window.siyuan.mobile.popEditor || window.siyuan.mobile.editor;
+    if (editor?.protyle.element.classList.contains("fn__none")) {
+        return undefined;
+    }
     /// #endif
     return editor;
 };
@@ -267,9 +280,12 @@ export const expandDocTree = async (options: {
         options.isSetCurrent = true;
     }
     if (isNotebook) {
-        liElement = file.element.querySelector(`.b3-list[data-url="${options.id}"]`).firstElementChild as HTMLElement;
+        liElement = file.element.querySelector(`.b3-list[data-url="${options.id}"]`)?.firstElementChild as HTMLElement;
     } else {
         const response = await fetchSyncPost("api/block/getBlockInfo", {id: options.id});
+        if (response.code === -1) {
+            return;
+        }
         notebookId = response.data.box;
         liElement = await file.selectItem(response.data.box, response.data.path, undefined, undefined, options.isSetCurrent);
     }

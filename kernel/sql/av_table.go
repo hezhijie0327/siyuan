@@ -22,8 +22,13 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
-func RenderAttributeViewTable(attrView *av.AttributeView, view *av.View, query string,
-	depth *int, cachedAttrViews map[string]*av.AttributeView) (ret *av.Table) {
+func RenderAttributeViewTable(attrView *av.AttributeView, view *av.View, query string, depth *int, cachedAttrViews map[string]*av.AttributeView) (ret *av.Table) {
+	viewable := attrView.RenderedViewables[view.ID]
+	if nil != viewable {
+		ret = viewable.(*av.Table)
+		return
+	}
+
 	ret = &av.Table{
 		BaseInstance: av.NewViewBaseInstance(view),
 		Columns:      []*av.TableColumn{},
@@ -91,7 +96,11 @@ func RenderAttributeViewTable(attrView *av.AttributeView, view *av.View, query s
 			}
 			tableRow.ID = rowID
 
-			fillAttributeViewBaseValue(tableCell.BaseValue, col.ID, rowID, col.NumberFormat, col.Template)
+			filedDateIsTime := false
+			if nil != col.Date {
+				filedDateIsTime = col.Date.FillSpecificTime
+			}
+			fillAttributeViewBaseValue(tableCell.BaseValue, col.ID, rowID, col.NumberFormat, col.Template, filedDateIsTime)
 			tableRow.Cells = append(tableRow.Cells, tableCell)
 		}
 		ret.Rows = append(ret.Rows, &tableRow)

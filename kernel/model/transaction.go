@@ -275,8 +275,10 @@ func performTx(tx *Transaction) (ret *TxErr) {
 				ret = tx.doUpdateAttrViewColRollup(op)
 			case "hideAttrViewName":
 				ret = tx.doHideAttrViewName(op)
-			case "setAttrViewColDate":
-				ret = tx.doSetAttrViewColDate(op)
+			case "setAttrViewColDateFillCreated":
+				ret = tx.doSetAttrViewColDateFillCreated(op)
+			case "setAttrViewColDateFillSpecificTime":
+				ret = tx.doSetAttrViewColDateFillSpecificTime(op)
 			case "duplicateAttrViewKey":
 				ret = tx.doDuplicateAttrViewKey(op)
 			case "setAttrViewCoverFrom":
@@ -437,6 +439,25 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 			return
 		}
 
+		if 0 < len(headingChildren) {
+			// 折叠标题再编辑形成外层列表（前面加上 * ）时，前端给的 tx 序列会形成死循环，在这里解开
+			// Nested lists cause hang after collapsing headings https://github.com/siyuan-note/siyuan/issues/15943
+			lastChild := headingChildren[len(headingChildren)-1]
+			if "1" == lastChild.IALAttr("heading-fold") && ast.NodeList == lastChild.Type &&
+				nil != lastChild.FirstChild && nil != lastChild.FirstChild.FirstChild && lastChild.FirstChild.FirstChild.ID == targetPreviousID {
+				ast.Walk(lastChild, func(n *ast.Node, entering bool) ast.WalkStatus {
+					if !entering || !n.IsBlock() {
+						return ast.WalkContinue
+					}
+
+					n.RemoveIALAttr("heading-fold")
+					n.RemoveIALAttr("fold")
+					return ast.WalkContinue
+				})
+				headingChildren = headingChildren[:len(headingChildren)-1]
+			}
+		}
+
 		for i := len(headingChildren) - 1; -1 < i; i-- {
 			c := headingChildren[i]
 			targetNode.InsertAfter(c)
@@ -587,19 +608,19 @@ func (tx *Transaction) doPrependInsert(operation *Operation) (ret *TxErr) {
 	if nil == insertedNode {
 		return &TxErr{code: TxErrCodeBlockNotFound, msg: "invalid data tree", id: block.ID}
 	}
-	var remains []*ast.Node
-	for remain := insertedNode.Next; nil != remain; remain = remain.Next {
-		if ast.NodeKramdownBlockIAL != remain.Type {
-			if "" == remain.ID {
-				remain.ID = ast.NewNodeID()
-				remain.SetIALAttr("id", remain.ID)
-			}
-			remains = append(remains, remain)
-		}
-	}
 	if "" == insertedNode.ID {
 		insertedNode.ID = ast.NewNodeID()
 		insertedNode.SetIALAttr("id", insertedNode.ID)
+	}
+	var toInserts []*ast.Node
+	for toInsert := insertedNode; nil != toInsert; toInsert = toInsert.Next {
+		if ast.NodeKramdownBlockIAL != toInsert.Type {
+			if "" == toInsert.ID {
+				toInsert.ID = ast.NewNodeID()
+				toInsert.SetIALAttr("id", toInsert.ID)
+			}
+			toInserts = append(toInserts, toInsert)
+		}
 	}
 
 	node := treenode.GetNodeInTree(tree, operation.ParentID)
@@ -608,31 +629,45 @@ func (tx *Transaction) doPrependInsert(operation *Operation) (ret *TxErr) {
 		return &TxErr{code: TxErrCodeBlockNotFound, id: operation.ParentID}
 	}
 	isContainer := node.IsContainerBlock()
-	for i := len(remains) - 1; 0 <= i; i-- {
-		remain := remains[i]
+	slices.Reverse(toInserts)
+
+	for _, toInsert := range toInserts {
 		if isContainer {
-			if ast.NodeListItem == node.Type && 3 == node.ListData.Typ {
-				node.FirstChild.InsertAfter(remain)
+			if ast.NodeList == node.Type {
+				// 列表下只能挂列表项，所以这里需要分情况处理
+				if ast.NodeList == toInsert.Type {
+					var childLis []*ast.Node
+					for childLi := toInsert.FirstChild; nil != childLi; childLi = childLi.Next {
+						childLis = append(childLis, childLi)
+					}
+					for i := len(childLis) - 1; -1 < i; i-- {
+						node.PrependChild(childLis[i])
+					}
+				} else {
+					newLiID := ast.NewNodeID()
+					newLi := &ast.Node{ID: newLiID, Type: ast.NodeListItem, ListData: &ast.ListData{Typ: node.ListData.Typ}}
+					newLi.SetIALAttr("id", newLiID)
+					node.PrependChild(newLi)
+					newLi.AppendChild(toInsert)
+				}
 			} else if ast.NodeSuperBlock == node.Type {
-				node.FirstChild.Next.InsertAfter(remain)
+				layout := node.ChildByType(ast.NodeSuperBlockLayoutMarker)
+				if nil != layout {
+					layout.InsertAfter(toInsert)
+				} else {
+					node.FirstChild.InsertAfter(toInsert)
+				}
 			} else {
-				node.PrependChild(remain)
+				node.PrependChild(toInsert)
 			}
 		} else {
-			node.InsertAfter(remain)
+			node.InsertAfter(toInsert)
 		}
+
+		createdUpdated(toInsert)
+		tx.nodes[toInsert.ID] = toInsert
 	}
-	if isContainer {
-		if ast.NodeListItem == node.Type && 3 == node.ListData.Typ {
-			node.FirstChild.InsertAfter(insertedNode)
-		} else if ast.NodeSuperBlock == node.Type {
-			node.FirstChild.Next.InsertAfter(insertedNode)
-		} else {
-			node.PrependChild(insertedNode)
-		}
-	} else {
-		node.InsertAfter(insertedNode)
-	}
+
 	createdUpdated(insertedNode)
 	tx.nodes[insertedNode.ID] = insertedNode
 	if err = tx.writeTree(tree); err != nil {
@@ -692,8 +727,17 @@ func (tx *Transaction) doAppendInsert(operation *Operation) (ret *TxErr) {
 		return &TxErr{code: TxErrCodeBlockNotFound, id: operation.ParentID}
 	}
 	isContainer := node.IsContainerBlock()
-	for i := 0; i < len(toInserts); i++ {
-		toInsert := toInserts[i]
+	if !isContainer {
+		slices.Reverse(toInserts)
+	}
+	var lastChildBelowHeading *ast.Node
+	if ast.NodeHeading == node.Type {
+		if children := treenode.HeadingChildren(node); 0 < len(children) {
+			lastChildBelowHeading = children[len(children)-1]
+		}
+	}
+
+	for _, toInsert := range toInserts {
 		if isContainer {
 			if ast.NodeList == node.Type {
 				// 列表下只能挂列表项，所以这里需要分情况处理 https://github.com/siyuan-note/siyuan/issues/9955
@@ -718,8 +762,19 @@ func (tx *Transaction) doAppendInsert(operation *Operation) (ret *TxErr) {
 				node.AppendChild(toInsert)
 			}
 		} else {
-			node.InsertAfter(toInsert)
+			if ast.NodeHeading == node.Type {
+				if nil != lastChildBelowHeading {
+					lastChildBelowHeading.InsertAfter(toInsert)
+				} else {
+					node.InsertAfter(toInsert)
+				}
+			} else {
+				node.InsertAfter(toInsert)
+			}
 		}
+
+		createdUpdated(toInsert)
+		tx.nodes[toInsert.ID] = toInsert
 	}
 
 	createdUpdated(insertedNode)
@@ -858,6 +913,7 @@ func (tx *Transaction) doDelete(operation *Operation) (ret *TxErr) {
 	}
 
 	node.Unlink()
+
 	if nil != parent && ast.NodeListItem == parent.Type && nil == parent.FirstChild {
 		needAppendEmptyListItem := true
 		for _, op := range tx.DoOperations {
@@ -1220,12 +1276,6 @@ func (tx *Transaction) doInsert(operation *Operation) (ret *TxErr) {
 			node.InsertAfter(remain)
 		}
 		node.InsertAfter(insertedNode)
-
-		if treenode.IsUnderFoldedHeading(insertedNode) {
-			// 保持在标题下的折叠状态
-			insertedNode.SetIALAttr("fold", "1")
-			insertedNode.SetIALAttr("heading-fold", "1")
-		}
 	} else {
 		node = treenode.GetNodeInTree(tree, operation.ParentID)
 		if nil == node {
@@ -1248,11 +1298,19 @@ func (tx *Transaction) doInsert(operation *Operation) (ret *TxErr) {
 					node.FirstChild.InsertAfter(remain)
 				}
 			} else {
-				for i := len(remains) - 1; 0 <= i; i-- {
-					remain := remains[i]
-					node.PrependChild(remain)
+				if !node.IsContainerBlock() {
+					for i := len(remains) - 1; 0 <= i; i-- {
+						remain := remains[i]
+						node.InsertAfter(remain)
+					}
+					node.InsertAfter(insertedNode)
+				} else {
+					for i := len(remains) - 1; 0 <= i; i-- {
+						remain := remains[i]
+						node.PrependChild(remain)
+					}
+					node.PrependChild(insertedNode)
 				}
-				node.PrependChild(insertedNode)
 			}
 		}
 	}
@@ -1464,18 +1522,51 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 		syncDelete2AvBlock(n, tree, tx)
 	}
 
-	// 替换为新节点
+	// 将不属于折叠标题的块移动到折叠标题下方，需要展开折叠标题
+	needUnfoldParentHeading := 0 < oldNode.HeadingLevel && (0 == updatedNode.HeadingLevel || oldNode.HeadingLevel < updatedNode.HeadingLevel)
+
+	oldParentFoldedHeading := treenode.GetParentFoldedHeading(oldNode)
+	// 将原先折叠标题下的块提升为与折叠标题同级或更高一级的标题时，需要在折叠标题后插入该提升后的标题块（只需要推送界面插入）
+	needInsertAfterParentHeading := nil != oldParentFoldedHeading && 0 != updatedNode.HeadingLevel && updatedNode.HeadingLevel <= oldParentFoldedHeading.HeadingLevel
+
 	oldNode.InsertAfter(updatedNode)
 	oldNode.Unlink()
 
-	if treenode.IsUnderFoldedHeading(updatedNode) {
-		// 保持在标题下的折叠状态
-		updatedNode.SetIALAttr("fold", "1")
-		updatedNode.SetIALAttr("heading-fold", "1")
+	if needUnfoldParentHeading {
+		newParentFoldedHeading := treenode.GetParentFoldedHeading(updatedNode)
+		if nil == oldParentFoldedHeading || (nil != newParentFoldedHeading && oldParentFoldedHeading.ID != newParentFoldedHeading.ID) {
+			unfoldHeading(newParentFoldedHeading, updatedNode)
+		}
+	}
+
+	if needInsertAfterParentHeading {
+		insertDom := data
+		if 2 == len(tx.DoOperations) && "foldHeading" == tx.DoOperations[1].Action {
+			children := treenode.HeadingChildren(updatedNode)
+			for _, child := range children {
+				ast.Walk(child, func(n *ast.Node, entering bool) ast.WalkStatus {
+					if !entering || !n.IsBlock() {
+						return ast.WalkContinue
+					}
+
+					n.SetIALAttr("fold", "1")
+					n.SetIALAttr("heading-fold", "1")
+					return ast.WalkContinue
+				})
+			}
+			updatedNode.SetIALAttr("fold", "1")
+			insertDom = tx.luteEngine.RenderNodeBlockDOM(updatedNode)
+		}
+
+		evt := util.NewCmdResult("transactions", 0, util.PushModeBroadcast)
+		evt.Data = []*Transaction{{
+			DoOperations:   []*Operation{{Action: "insert", ID: updatedNode.ID, PreviousID: oldParentFoldedHeading.ID, Data: insertDom}},
+			UndoOperations: []*Operation{{Action: "delete", ID: updatedNode.ID}},
+		}}
+		util.PushEvent(evt)
 	}
 
 	createdUpdated(updatedNode)
-
 	tx.nodes[updatedNode.ID] = updatedNode
 	if err = tx.writeTree(tree); err != nil {
 		return &TxErr{code: TxErrCodeWriteTree, msg: err.Error(), id: id}
@@ -1503,6 +1594,29 @@ func (tx *Transaction) doUpdate(operation *Operation) (ret *TxErr) {
 		}
 	}
 	return
+}
+
+func unfoldHeading(heading, currentNode *ast.Node) {
+	if nil == heading {
+		return
+	}
+
+	children := treenode.HeadingChildren(heading)
+	for _, child := range children {
+		ast.Walk(child, func(n *ast.Node, entering bool) ast.WalkStatus {
+			if !entering || !n.IsBlock() {
+				return ast.WalkContinue
+			}
+
+			n.RemoveIALAttr("fold")
+			n.RemoveIALAttr("heading-fold")
+			return ast.WalkContinue
+		})
+	}
+	heading.RemoveIALAttr("fold")
+	heading.RemoveIALAttr("heading-fold")
+
+	util.BroadcastByType("protyle", "unfoldHeading", 0, "", map[string]interface{}{"id": heading.ID, "currentNodeID": currentNode.ID})
 }
 
 func getRefDefIDs(node *ast.Node) (refDefIDs []string) {

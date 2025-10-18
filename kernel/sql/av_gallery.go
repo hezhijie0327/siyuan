@@ -18,8 +18,13 @@ import (
 	"github.com/siyuan-note/siyuan/kernel/util"
 )
 
-func RenderAttributeViewGallery(attrView *av.AttributeView, view *av.View, query string,
-	depth *int, cachedAttrViews map[string]*av.AttributeView) (ret *av.Gallery) {
+func RenderAttributeViewGallery(attrView *av.AttributeView, view *av.View, query string, depth *int, cachedAttrViews map[string]*av.AttributeView) (ret *av.Gallery) {
+	viewable := attrView.RenderedViewables[view.ID]
+	if nil != viewable {
+		ret = viewable.(*av.Gallery)
+		return
+	}
+
 	ret = &av.Gallery{
 		BaseInstance:        av.NewViewBaseInstance(view),
 		CoverFrom:           view.Gallery.CoverFrom,
@@ -103,7 +108,11 @@ func RenderAttributeViewGallery(attrView *av.AttributeView, view *av.View, query
 			}
 			galleryCard.ID = cardID
 
-			fillAttributeViewBaseValue(fieldValue.BaseValue, field.ID, cardID, field.NumberFormat, field.Template)
+			filedDateIsTime := false
+			if nil != field.Date {
+				filedDateIsTime = field.Date.FillSpecificTime
+			}
+			fillAttributeViewBaseValue(fieldValue.BaseValue, field.ID, cardID, field.NumberFormat, field.Template, filedDateIsTime)
 			galleryCard.Values = append(galleryCard.Values, fieldValue)
 		}
 
