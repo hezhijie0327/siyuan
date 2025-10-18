@@ -8,7 +8,7 @@ require (
 	github.com/88250/epub v0.0.0-20230830085737-c19055cd1f48
 	github.com/88250/go-humanize v0.0.0-20240424102817-4f78fac47ea7
 	github.com/88250/gulu v1.2.3-0.20250227144607-7f4570b0d689
-	github.com/88250/lute v1.7.7-0.20251013040153-3679971223e2
+	github.com/88250/lute v1.7.7-0.20251017152108-2f08bdccf095
 	github.com/88250/vitess-sqlparser v0.0.0-20210205111146-56a2ded2aba1
 	github.com/ClarkThan/ahocorasick v0.0.0-20231011042242-30d1ef1347f4
 	github.com/ConradIrwin/font v0.2.1
@@ -58,11 +58,11 @@ require (
 	github.com/sashabaranov/go-openai v1.41.2
 	github.com/shirou/gopsutil/v4 v4.25.9
 	github.com/siyuan-note/dataparser v0.0.0-20250804100744-b41253b236f3
-	github.com/siyuan-note/dejavu v0.0.0-20251011030034-d7e5aa18aadd
+	github.com/siyuan-note/dejavu v0.0.0-20251016025439-375e3aadc5b1
 	github.com/siyuan-note/encryption v0.0.0-20250326023622-24a67e6956ec
 	github.com/siyuan-note/eventbus v0.0.0-20240627125516-396fdb0f0f97
 	github.com/siyuan-note/filelock v0.0.0-20251010020544-2603449ff16d
-	github.com/siyuan-note/httpclient v0.0.0-20250930140902-da745d9bc9f0
+	github.com/siyuan-note/httpclient v0.0.0-20251016024153-048ea2b2ebfd
 	github.com/siyuan-note/logging v0.0.0-20250425042449-b96c40249b54
 	github.com/siyuan-note/riff v0.0.0-20250424035337-0a1e91809f6d
 	github.com/spf13/cast v1.10.0
@@ -111,7 +111,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.29.6 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.38.6 // indirect
-	github.com/aws/smithy-go v1.23.0 // indirect
+	github.com/aws/smithy-go v1.23.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.1 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
@@ -164,7 +164,7 @@ require (
 	github.com/qiniu/go-sdk/v7 v7.25.4 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/quic-go/quic-go v0.55.0 // indirect
-	github.com/refraction-networking/utls v1.8.0 // indirect
+	github.com/refraction-networking/utls v1.8.1 // indirect
 	github.com/restic/chunker v0.4.0 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect

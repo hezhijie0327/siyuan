@@ -82,8 +82,8 @@ export const genCardHTML = (options: {
         <div data-type="fullscreen" class="b3-tooltips b3-tooltips__sw block__icon block__icon--show" aria-label="${window.siyuan.languages.fullscreen}">
             <svg><use xlink:href="#iconFullscreen"></use></svg>
         </div>
-        <div class="fn__space"></div>
-        <div data-type="more" class="b3-tooltips b3-tooltips__sw block__icon block__icon--show" aria-label="${window.siyuan.languages.more}">
+        <div class="fn__space${options.cardsData.cards.length === 0 ? " fn__none" : ""}"></div>
+        <div data-type="more" class="${options.cardsData.cards.length === 0 ? "fn__none " : ""}b3-tooltips b3-tooltips__sw block__icon block__icon--show" aria-label="${window.siyuan.languages.more}">
             <svg><use xlink:href="#iconMore"></use></svg>
         </div>
         <div class="fn__space${options.isTab ? " fn__none" : ""}"></div>
@@ -233,7 +233,7 @@ export const bindCardEvent = async (options: {
     cardType: TCardType,
     id?: string,
     dialog?: Dialog,
-    index?: number
+    index?: number,
 }) => {
     if (window.siyuan.storage[Constants.LOCAL_FLASHCARD].fullscreen) {
         fullscreen(options.element.querySelector(".card__main"),
@@ -301,7 +301,7 @@ export const bindCardEvent = async (options: {
     };
 
     countElement.innerHTML = genCardCount(options.cardsData, index);
-    options.element.addEventListener("click", (event: MouseEvent) => {
+    options.element.firstChild.addEventListener("click", (event: MouseEvent) => {
         const target = event.target as HTMLElement;
         let type = "";
         const currentCard = options.cardsData.cards[index];
@@ -335,7 +335,7 @@ export const bindCardEvent = async (options: {
                 return;
             }
             const moreElement = hasClosestByAttribute(target, "data-type", "more");
-            if (moreElement) {
+            if (moreElement && currentCard) {
                 event.stopPropagation();
                 event.preventDefault();
                 if (filterElement.getAttribute("data-cardtype") === "all" && filterElement.getAttribute("data-id")) {
@@ -874,6 +874,9 @@ const allDone = (countElement: Element, editor: Protyle, actionElements: NodeLis
     emptyElement.classList.remove("fn__none");
     actionElements[0].classList.add("fn__none");
     actionElements[1].classList.add("fn__none");
+    const moreElement = countElement.parentElement.querySelector('[data-type="more"]');
+    moreElement.classList.add("fn__none");
+    moreElement.previousElementSibling.classList.add("fn__none");
 };
 
 const newRound = (countElement: Element, editor: Protyle, actionElements: NodeListOf<Element>, unreviewedCount: number) => {

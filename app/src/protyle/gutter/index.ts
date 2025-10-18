@@ -874,9 +874,10 @@ export class Gutter {
                 id: "separator_quickMakeCard",
                 type: "separator"
             }).element);
+            const allCardsMade = !selectsElement.some(item => !item.hasAttribute(Constants.CUSTOM_RIFF_DECKS) && item.getAttribute("data-type") !== "NodeThematicBreak");
             window.siyuan.menus.menu.append(new MenuItem({
-                id: "quickMakeCard",
-                label: window.siyuan.languages.quickMakeCard,
+                id: allCardsMade ? "removeCard" : "quickMakeCard",
+                label: allCardsMade ? window.siyuan.languages.removeCard : window.siyuan.languages.quickMakeCard,
                 accelerator: window.siyuan.config.keymap.editor.general.quickMakeCard.custom,
                 icon: "iconRiffCard",
                 click() {
@@ -1674,8 +1675,8 @@ export class Gutter {
                             blockRender(protyle, nodeElement);
                         }
                     }, {
-                        id: "showHeadingWithBlocks",
-                        label: window.siyuan.languages.showHeadingWithBlocks,
+                        id: "showHeadingOnlyBlocks",
+                        label: window.siyuan.languages.showHeadingOnlyBlocks,
                         iconHTML: "",
                         checked: nodeElement.getAttribute("custom-heading-mode") === "2",
                         click() {
@@ -1769,8 +1770,8 @@ export class Gutter {
                         }
                         fetchPost("/api/block/getHeadingDeleteTransaction", {
                             id,
-                        }, (response) => {
-                            response.data.doOperations.forEach((operation: IOperation) => {
+                        }, (deleteResponse) => {
+                            deleteResponse.data.doOperations.forEach((operation: IOperation) => {
                                 protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
                                     itemElement.remove();
                                 });
@@ -1779,19 +1780,19 @@ export class Gutter {
                                 const newID = Lute.NewNodeID();
                                 const emptyElement = genEmptyElement(false, false, newID);
                                 protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
-                                response.data.doOperations.push({
+                                deleteResponse.data.doOperations.push({
                                     action: "insert",
                                     data: emptyElement.outerHTML,
                                     id: newID,
                                     parentID: protyle.block.parentID
                                 });
-                                response.data.undoOperations.push({
+                                deleteResponse.data.undoOperations.push({
                                     action: "delete",
                                     id: newID,
                                 });
                                 focusBlock(emptyElement);
                             }
-                            transaction(protyle, response.data.doOperations, response.data.undoOperations);
+                            transaction(protyle, deleteResponse.data.doOperations, deleteResponse.data.undoOperations);
                         });
                     });
                 }
@@ -1986,10 +1987,11 @@ export class Gutter {
         }
         window.siyuan.menus.menu.append(new MenuItem({id: "separator_4", type: "separator"}).element);
         if (type !== "NodeThematicBreak" && !window.siyuan.config.readonly) {
+            const isCardMade = nodeElement.hasAttribute(Constants.CUSTOM_RIFF_DECKS);
             window.siyuan.menus.menu.append(new MenuItem({
-                id: "quickMakeCard",
+                id: isCardMade ? "removeCard" : "quickMakeCard",
                 icon: "iconRiffCard",
-                label: window.siyuan.languages.quickMakeCard,
+                label: isCardMade ? window.siyuan.languages.removeCard : window.siyuan.languages.quickMakeCard,
                 accelerator: window.siyuan.config.keymap.editor.general.quickMakeCard.custom,
                 click() {
                     quickMakeCard(protyle, [nodeElement]);
