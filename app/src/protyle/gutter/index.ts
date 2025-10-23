@@ -404,7 +404,8 @@ export class Gutter {
                     }
                 }
                 foldElement.classList.remove("protyle-wysiwyg--hl");
-            } else if (window.siyuan.shiftIsPressed && !protyle.disabled) {
+            } else if (event.shiftKey && !protyle.disabled) {
+                // 不使用 window.siyuan.shiftIsPressed ，否则窗口未激活时按 Shift 点击块标无法打开属性面板 https://github.com/siyuan-note/siyuan/issues/15075
                 openAttr(protyle.wysiwyg.element.querySelector(`[data-node-id="${id}"]`), "bookmark", protyle);
             } else if (!window.siyuan.ctrlIsPressed && !window.siyuan.altIsPressed && !window.siyuan.shiftIsPressed) {
                 this.renderMenu(protyle, buttonElement);
@@ -929,6 +930,7 @@ export class Gutter {
         const id = buttonElement.getAttribute("data-node-id");
         const selectsElement = protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select");
         if (selectsElement.length > 1) {
+            window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_BLOCK_MULTI);
             const match = Array.from(selectsElement).find(item => {
                 if (id === item.getAttribute("data-node-id")) {
                     return true;
@@ -937,6 +939,8 @@ export class Gutter {
             if (match) {
                 return this.renderMultipleMenu(protyle, Array.from(selectsElement));
             }
+        } else {
+            window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_BLOCK_SINGLE);
         }
 
         let nodeElement: Element;

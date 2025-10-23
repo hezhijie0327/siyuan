@@ -6,7 +6,13 @@ import {getDockByType} from "../tabUtil";
 import {fetchPost} from "../../util/fetch";
 import {getAllModels} from "../getAll";
 import {hasClosestBlock, hasClosestByClassName, hasTopClosestByClassName} from "../../protyle/util/hasClosest";
-import {setStorageVal, updateHotkeyAfterTip, updateHotkeyTip} from "../../protyle/util/compatibility";
+import {
+    isInAndroid,
+    isInHarmony,
+    setStorageVal,
+    updateHotkeyAfterTip,
+    writeText
+} from "../../protyle/util/compatibility";
 import {openFileById} from "../../editor/util";
 import {Constants} from "../../constants";
 import {MenuItem} from "../../menus/Menu";
@@ -18,10 +24,10 @@ import {checkFold} from "../../util/noRelyPCFunction";
 import {transaction, turnsIntoTransaction} from "../../protyle/wysiwyg/transaction";
 import {goHome} from "../../protyle/wysiwyg/commonHotkey";
 import {Editor} from "../../editor";
-import {writeText, isInAndroid, isInHarmony} from "../../protyle/util/compatibility";
 import {mathRender} from "../../protyle/render/mathRender";
 import {genEmptyElement} from "../../block/util";
 import {focusBlock, focusByWbr} from "../../protyle/util/selection";
+import {dragOverScroll, stopScrollAnimation} from "../../boot/globalEvent/dragover";
 
 export class Outline extends Model {
     public tree: Tree;
@@ -363,17 +369,12 @@ export class Outline extends Model {
                 }
                 ghostElement.style.top = moveEvent.clientY + "px";
                 ghostElement.style.left = moveEvent.clientX + "px";
+                dragOverScroll(moveEvent, contentRect, this.element);
                 if (!this.element.contains(moveEvent.target as Element)) {
                     this.element.querySelectorAll(".dragover__top, .dragover__bottom, .dragover, .dragover__current").forEach(item => {
                         item.classList.remove("dragover__top", "dragover__bottom", "dragover", "dragover__current");
                     });
                     return;
-                }
-                if (moveEvent.clientY < contentRect.top + Constants.SIZE_SCROLL_TB || moveEvent.clientY > contentRect.bottom - Constants.SIZE_SCROLL_TB) {
-                    this.element.scroll({
-                        top: this.element.scrollTop + (moveEvent.clientY < contentRect.top + Constants.SIZE_SCROLL_TB ? -Constants.SIZE_SCROLL_STEP : Constants.SIZE_SCROLL_STEP),
-                        behavior: "smooth"
-                    });
                 }
                 selectItem = hasClosestByClassName(moveEvent.target as HTMLElement, "b3-list-item") as HTMLElement;
                 if (!selectItem || selectItem.tagName !== "LI" || selectItem.style.position === "fixed") {
@@ -405,6 +406,8 @@ export class Outline extends Model {
                 documentSelf.onselect = null;
                 ghostElement?.remove();
                 item.style.opacity = "";
+                // 清理滚动动画
+                stopScrollAnimation();
                 if (!selectItem) {
                     selectItem = this.element.querySelector(".dragover__top, .dragover__bottom, .dragover");
                 }
@@ -632,15 +635,13 @@ export class Outline extends Model {
                 item.classList.remove("popover__block");
             });
             this.element.scrollTop = scrollTop;
-        } else {
+        } else if (this.blockId) {
             fetchPost("/api/storage/getOutlineStorage", {
                 docID: this.blockId
             }, storageResponse => {
                 const storageData = storageResponse.data;
                 if (storageData && storageData.expandIds) {
                     this.tree.setExpandIds(storageData.expandIds);
-                } else {
-                    this.tree.expandAll();
                 }
                 if ((this.headerElement.querySelector("input.b3-text-field.search__label") as HTMLInputElement).value) {
                     this.setFilter();
@@ -658,6 +659,10 @@ export class Outline extends Model {
     }
 
     public saveExpendIds() {
+        if (window.siyuan.config.readonly || window.siyuan.isPublish) {
+            return;
+        }
+
         if (!this.isPreview && this.type === "pin") {
             fetchPost("/api/storage/setOutlineStorage", {
                 docID: this.blockId,
@@ -788,8 +793,10 @@ export class Outline extends Model {
      */
     private showExpandLevelMenu(target: HTMLElement) {
         window.siyuan.menus.menu.remove();
+        window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_OUTLINE_EXPAND_LEVEL);
         for (let i = 1; i <= 6; i++) {
             window.siyuan.menus.menu.append(new MenuItem({
+                id: `heading${i}`,
                 icon: `iconH${i}`,
                 label: window.siyuan.languages[`heading${i}`],
                 click: () => this.expandToLevel(i)
@@ -867,164 +874,129 @@ export class Outline extends Model {
         }
         const currentLevel = this.getHeadingLevel(element);
         window.siyuan.menus.menu.remove();
-        // 升级
-        if (currentLevel > 1) {
-            window.siyuan.menus.menu.append(new MenuItem({
-                icon: "iconUp",
-                label: window.siyuan.languages.upgrade,
-                click: () => {
-                    const data = this.getProtyleAndBlockElement(element);
-                    if (data) {
-                        turnsIntoTransaction({
-                            protyle: data.protyle,
-                            selectsElement: [data.blockElement],
-                            type: "Blocks2Hs",
-                            level: currentLevel - 1
-                        });
-                    }
-                }
-            }).element);
-        }
-
-        // 降级
-        if (currentLevel < 6) {
-            window.siyuan.menus.menu.append(new MenuItem({
-                icon: "iconDown",
-                label: window.siyuan.languages.downgrade,
-                click: () => {
-                    const data = this.getProtyleAndBlockElement(element);
-                    if (data) {
-                        turnsIntoTransaction({
-                            protyle: data.protyle,
-                            selectsElement: [data.blockElement],
-                            type: "Blocks2Hs",
-                            level: currentLevel + 1
-                        });
-                    }
-                }
-            }).element);
-        }
-
-        // 带子标题转换
+        window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_OUTLINE_CONTEXT);
         const id = element.getAttribute("data-node-id");
-        checkFold(id, (zoomIn) => {
-            openFileById({
-                app: this.app,
-                id,
-                action: zoomIn ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL, Constants.CB_GET_HTML, Constants.CB_GET_OUTLINE] : [Constants.CB_GET_FOCUS, Constants.CB_GET_OUTLINE, Constants.CB_GET_SETID, Constants.CB_GET_CONTEXT, Constants.CB_GET_HTML],
-            });
-        });
-        this.setCurrentById(id);
-        const headingSubMenu = [];
-        if (currentLevel !== 1) {
-            headingSubMenu.push(this.genHeadingTransform(id, 1));
-        }
-        if (currentLevel !== 2) {
-            headingSubMenu.push(this.genHeadingTransform(id, 2));
-        }
-        if (currentLevel !== 3) {
-            headingSubMenu.push(this.genHeadingTransform(id, 3));
-        }
-        if (currentLevel !== 4) {
-            headingSubMenu.push(this.genHeadingTransform(id, 4));
-        }
-        if (currentLevel !== 5) {
-            headingSubMenu.push(this.genHeadingTransform(id, 5));
-        }
-        if (currentLevel !== 6) {
-            headingSubMenu.push(this.genHeadingTransform(id, 6));
-        }
-
-        if (headingSubMenu.length > 0) {
-            window.siyuan.menus.menu.append(new MenuItem({
-                id: "tWithSubtitle",
-                type: "submenu",
-                icon: "iconRefresh",
-                label: window.siyuan.languages.tWithSubtitle,
-                submenu: headingSubMenu
-            }).element);
-        }
-
-        window.siyuan.menus.menu.append(new MenuItem({type: "separator"}).element);
-
-        // 在前面插入同级标题
-        window.siyuan.menus.menu.append(new MenuItem({
-            icon: "iconBefore",
-            label: window.siyuan.languages.insertSameLevelHeadingBefore,
-            click: () => {
-                const data = this.getProtyleAndBlockElement(element);
-                const newId = Lute.NewNodeID();
-                const html = `<div data-subtype="h${currentLevel}" data-node-id="${newId}" data-type="NodeHeading" class="h${currentLevel}"><div contenteditable="true" spellcheck="false"><wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div></div>`;
-                transaction(data.protyle, [{
-                    action: "insert",
-                    data: html,
-                    id: newId,
-                    previousID: data.blockElement.previousElementSibling?.getAttribute("data-node-id"),
-                    parentID: data.blockElement.parentElement.getAttribute("data-node-id") || data.protyle.block.parentID,
-                }], [{
-                    action: "delete",
-                    id: newId
-                }]);
-                data.blockElement.insertAdjacentHTML("beforebegin", html);
-                data.blockElement.previousElementSibling.scrollIntoView();
-                focusByWbr(data.blockElement.previousElementSibling, document.createRange());
+        if (!window.siyuan.config.readonly) {
+            // 升级
+            if (currentLevel > 1) {
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "upgrade",
+                    icon: "iconUp",
+                    label: window.siyuan.languages.upgrade,
+                    click: () => {
+                        const data = this.getProtyleAndBlockElement(element);
+                        if (data) {
+                            turnsIntoTransaction({
+                                protyle: data.protyle,
+                                selectsElement: [data.blockElement],
+                                type: "Blocks2Hs",
+                                level: currentLevel - 1
+                            });
+                        }
+                    }
+                }).element);
             }
-        }).element);
 
-        // 在后面插入同级标题
-        window.siyuan.menus.menu.append(new MenuItem({
-            icon: "iconAfter",
-            label: window.siyuan.languages.insertSameLevelHeadingAfter,
-            click: () => {
-                fetchPost("/api/block/getHeadingDeleteTransaction", {
+            // 降级
+            if (currentLevel < 6) {
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "downgrade",
+                    icon: "iconDown",
+                    label: window.siyuan.languages.downgrade,
+                    click: () => {
+                        const data = this.getProtyleAndBlockElement(element);
+                        if (data) {
+                            turnsIntoTransaction({
+                                protyle: data.protyle,
+                                selectsElement: [data.blockElement],
+                                type: "Blocks2Hs",
+                                level: currentLevel + 1
+                            });
+                        }
+                    }
+                }).element);
+            }
+
+            // 带子标题转换
+            checkFold(id, (zoomIn) => {
+                openFileById({
+                    app: this.app,
                     id,
-                }, (deleteResponse) => {
-                    const data = this.getProtyleAndBlockElement(element);
-                    const previousID = deleteResponse.data.doOperations[deleteResponse.data.doOperations.length - 1].id;
+                    action: zoomIn ? [Constants.CB_GET_FOCUS, Constants.CB_GET_ALL, Constants.CB_GET_HTML, Constants.CB_GET_OUTLINE] : [Constants.CB_GET_FOCUS, Constants.CB_GET_OUTLINE, Constants.CB_GET_SETID, Constants.CB_GET_CONTEXT, Constants.CB_GET_HTML],
+                });
+            });
+            this.setCurrentById(id);
+            const headingSubMenu = [];
+            if (currentLevel !== 1) {
+                headingSubMenu.push(this.genHeadingTransform(id, 1));
+            }
+            if (currentLevel !== 2) {
+                headingSubMenu.push(this.genHeadingTransform(id, 2));
+            }
+            if (currentLevel !== 3) {
+                headingSubMenu.push(this.genHeadingTransform(id, 3));
+            }
+            if (currentLevel !== 4) {
+                headingSubMenu.push(this.genHeadingTransform(id, 4));
+            }
+            if (currentLevel !== 5) {
+                headingSubMenu.push(this.genHeadingTransform(id, 5));
+            }
+            if (currentLevel !== 6) {
+                headingSubMenu.push(this.genHeadingTransform(id, 6));
+            }
 
+            if (headingSubMenu.length > 0) {
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "tWithSubtitle",
+                    type: "submenu",
+                    icon: "iconRefresh",
+                    label: window.siyuan.languages.tWithSubtitle,
+                    submenu: headingSubMenu
+                }).element);
+            }
+
+            window.siyuan.menus.menu.append(new MenuItem({id: "separator_1", type: "separator"}).element);
+
+            // 在前面插入同级标题
+            window.siyuan.menus.menu.append(new MenuItem({
+                id: "insertSameLevelHeadingBefore",
+                icon: "iconBefore",
+                label: window.siyuan.languages.insertSameLevelHeadingBefore,
+                click: () => {
+                    const data = this.getProtyleAndBlockElement(element);
                     const newId = Lute.NewNodeID();
                     const html = `<div data-subtype="h${currentLevel}" data-node-id="${newId}" data-type="NodeHeading" class="h${currentLevel}"><div contenteditable="true" spellcheck="false"><wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div></div>`;
                     transaction(data.protyle, [{
                         action: "insert",
                         data: html,
                         id: newId,
-                        previousID,
+                        previousID: data.blockElement.previousElementSibling?.getAttribute("data-node-id"),
+                        parentID: data.blockElement.parentElement.getAttribute("data-node-id") || data.protyle.block.parentID,
                     }], [{
                         action: "delete",
                         id: newId
                     }]);
-                    const previousElement = data.protyle.wysiwyg.element.querySelector(`[data-node-id="${previousID}"]`);
-                    if (previousElement) {
-                        previousElement.insertAdjacentHTML("afterend", html);
-                        previousElement.nextElementSibling.scrollIntoView();
-                        focusByWbr(previousElement.nextElementSibling, document.createRange());
-                    }
-                });
-            }
-        }).element);
+                    data.blockElement.insertAdjacentHTML("beforebegin", html);
+                    data.blockElement.previousElementSibling.scrollIntoView();
+                    focusByWbr(data.blockElement.previousElementSibling, document.createRange());
+                }
+            }).element);
 
-        // 添加子标题
-        if (currentLevel < 6) { // 只有当前级别小于6时才能添加子标题
+            // 在后面插入同级标题
             window.siyuan.menus.menu.append(new MenuItem({
-                icon: "iconAdd",
-                label: window.siyuan.languages.addChildHeading,
+                id: "insertSameLevelHeadingAfter",
+                icon: "iconAfter",
+                label: window.siyuan.languages.insertSameLevelHeadingAfter,
                 click: () => {
                     fetchPost("/api/block/getHeadingDeleteTransaction", {
                         id,
                     }, (deleteResponse) => {
-                        let previousID = deleteResponse.data.doOperations[deleteResponse.data.doOperations.length - 1].id;
-                        deleteResponse.data.undoOperations.find((operationsItem: IOperation, index: number) => {
-                            const startIndex = operationsItem.data.indexOf(' data-subtype="h');
-                            if (startIndex > -1 && startIndex < 260 && parseInt(operationsItem.data.substring(startIndex + 16, startIndex + 17)) === currentLevel + 1) {
-                                previousID = deleteResponse.data.undoOperations[index - 1].id;
-                                return true;
-                            }
-                        });
-
-
                         const data = this.getProtyleAndBlockElement(element);
+                        const previousID = deleteResponse.data.doOperations[deleteResponse.data.doOperations.length - 1].id;
+
                         const newId = Lute.NewNodeID();
-                        const html = `<div data-subtype="h${currentLevel + 1}" data-node-id="${newId}" data-type="NodeHeading" class="h${currentLevel + 1}"><div contenteditable="true" spellcheck="false"><wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div></div>`;
+                        const html = `<div data-subtype="h${currentLevel}" data-node-id="${newId}" data-type="NodeHeading" class="h${currentLevel}"><div contenteditable="true" spellcheck="false"><wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div></div>`;
                         transaction(data.protyle, [{
                             action: "insert",
                             data: html,
@@ -1043,12 +1015,56 @@ export class Outline extends Model {
                     });
                 }
             }).element);
-        }
 
-        window.siyuan.menus.menu.append(new MenuItem({type: "separator"}).element);
+            // 添加子标题
+            if (currentLevel < 6) { // 只有当前级别小于6时才能添加子标题
+                window.siyuan.menus.menu.append(new MenuItem({
+                    id: "addChildHeading",
+                    icon: "iconAdd",
+                    label: window.siyuan.languages.addChildHeading,
+                    click: () => {
+                        fetchPost("/api/block/getHeadingDeleteTransaction", {
+                            id,
+                        }, (deleteResponse) => {
+                            let previousID = deleteResponse.data.doOperations[deleteResponse.data.doOperations.length - 1].id;
+                            deleteResponse.data.undoOperations.find((operationsItem: IOperation, index: number) => {
+                                const startIndex = operationsItem.data.indexOf(' data-subtype="h');
+                                if (startIndex > -1 && startIndex < 260 && parseInt(operationsItem.data.substring(startIndex + 16, startIndex + 17)) === currentLevel + 1) {
+                                    previousID = deleteResponse.data.undoOperations[index - 1].id;
+                                    return true;
+                                }
+                            });
+
+
+                            const data = this.getProtyleAndBlockElement(element);
+                            const newId = Lute.NewNodeID();
+                            const html = `<div data-subtype="h${currentLevel + 1}" data-node-id="${newId}" data-type="NodeHeading" class="h${currentLevel + 1}"><div contenteditable="true" spellcheck="false"><wbr></div><div class="protyle-attr" contenteditable="false">${Constants.ZWSP}</div></div>`;
+                            transaction(data.protyle, [{
+                                action: "insert",
+                                data: html,
+                                id: newId,
+                                previousID,
+                            }], [{
+                                action: "delete",
+                                id: newId
+                            }]);
+                            const previousElement = data.protyle.wysiwyg.element.querySelector(`[data-node-id="${previousID}"]`);
+                            if (previousElement) {
+                                previousElement.insertAdjacentHTML("afterend", html);
+                                previousElement.nextElementSibling.scrollIntoView();
+                                focusByWbr(previousElement.nextElementSibling, document.createRange());
+                            }
+                        });
+                    }
+                }).element);
+            }
+
+            window.siyuan.menus.menu.append(new MenuItem({id: "separator_2", type: "separator"}).element);
+        }
 
         // 复制带子标题
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "copyHeadings1",
             icon: "iconCopy",
             label: `${window.siyuan.languages.copy} ${window.siyuan.languages.headings1}`,
             click: () => {
@@ -1068,27 +1084,66 @@ export class Outline extends Model {
             }
         }).element);
 
-        // 剪切带子标题
-        window.siyuan.menus.menu.append(new MenuItem({
-            icon: "iconCut",
-            label: `${window.siyuan.languages.cut} ${window.siyuan.languages.headings1}`,
-            click: () => {
-                const data = this.getProtyleAndBlockElement(element);
-                fetchPost("/api/block/getHeadingChildrenDOM", {
-                    id,
-                    removeFoldAttr: data.blockElement.getAttribute("fold") !== "1"
-                }, (response) => {
-                    if (isInAndroid()) {
-                        window.JSAndroid.writeHTMLClipboard(data.protyle.lute.BlockDOM2StdMd(response.data).trimEnd(), response.data + Constants.ZWSP);
-                    } else if (isInHarmony()) {
-                        window.JSHarmony.writeHTMLClipboard(data.protyle.lute.BlockDOM2StdMd(response.data).trimEnd(), response.data + Constants.ZWSP);
-                    } else {
-                        writeText(response.data + Constants.ZWSP);
-                    }
+        if (!window.siyuan.config.readonly) {
+            // 剪切带子标题
+            window.siyuan.menus.menu.append(new MenuItem({
+                id: "cutHeadings1",
+                icon: "iconCut",
+                label: `${window.siyuan.languages.cut} ${window.siyuan.languages.headings1}`,
+                click: () => {
+                    const data = this.getProtyleAndBlockElement(element);
+                    fetchPost("/api/block/getHeadingChildrenDOM", {
+                        id,
+                        removeFoldAttr: data.blockElement.getAttribute("fold") !== "1"
+                    }, (response) => {
+                        if (isInAndroid()) {
+                            window.JSAndroid.writeHTMLClipboard(data.protyle.lute.BlockDOM2StdMd(response.data).trimEnd(), response.data + Constants.ZWSP);
+                        } else if (isInHarmony()) {
+                            window.JSHarmony.writeHTMLClipboard(data.protyle.lute.BlockDOM2StdMd(response.data).trimEnd(), response.data + Constants.ZWSP);
+                        } else {
+                            writeText(response.data + Constants.ZWSP);
+                        }
+                        fetchPost("/api/block/getHeadingDeleteTransaction", {
+                            id,
+                        }, (deleteResponse) => {
+                            deleteResponse.data.doOperations.forEach((operation: IOperation) => {
+                                data.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
+                                    itemElement.remove();
+                                });
+                            });
+                            if (data.protyle.wysiwyg.element.childElementCount === 0) {
+                                const newID = Lute.NewNodeID();
+                                const emptyElement = genEmptyElement(false, false, newID);
+                                data.protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
+                                deleteResponse.data.doOperations.push({
+                                    action: "insert",
+                                    data: emptyElement.outerHTML,
+                                    id: newID,
+                                    parentID: data.protyle.block.parentID
+                                });
+                                deleteResponse.data.undoOperations.push({
+                                    action: "delete",
+                                    id: newID,
+                                });
+                                focusBlock(emptyElement);
+                            }
+                            transaction(data.protyle, deleteResponse.data.doOperations, deleteResponse.data.undoOperations);
+                        });
+                    });
+                }
+            }).element);
+
+            // 删除
+            window.siyuan.menus.menu.append(new MenuItem({
+                id: "deleteHeadings1",
+                icon: "iconTrashcan",
+                label: `${window.siyuan.languages.delete} ${window.siyuan.languages.headings1}`,
+                click: () => {
+                    const data = this.getProtyleAndBlockElement(element);
                     fetchPost("/api/block/getHeadingDeleteTransaction", {
                         id,
-                    }, (deleteResponse) => {
-                        deleteResponse.data.doOperations.forEach((operation: IOperation) => {
+                    }, (response) => {
+                        response.data.doOperations.forEach((operation: IOperation) => {
                             data.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
                                 itemElement.remove();
                             });
@@ -1097,95 +1152,64 @@ export class Outline extends Model {
                             const newID = Lute.NewNodeID();
                             const emptyElement = genEmptyElement(false, false, newID);
                             data.protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
-                            deleteResponse.data.doOperations.push({
+                            response.data.doOperations.push({
                                 action: "insert",
                                 data: emptyElement.outerHTML,
                                 id: newID,
                                 parentID: data.protyle.block.parentID
                             });
-                            deleteResponse.data.undoOperations.push({
+                            response.data.undoOperations.push({
                                 action: "delete",
                                 id: newID,
                             });
                             focusBlock(emptyElement);
                         }
-                        transaction(data.protyle, deleteResponse.data.doOperations, deleteResponse.data.undoOperations);
+                        transaction(data.protyle, response.data.doOperations, response.data.undoOperations);
                     });
-                });
-            }
-        }).element);
-
-        // 删除
-        window.siyuan.menus.menu.append(new MenuItem({
-            icon: "iconTrashcan",
-            label: `${window.siyuan.languages.delete} ${window.siyuan.languages.headings1}`,
-            click: () => {
-                const data = this.getProtyleAndBlockElement(element);
-                fetchPost("/api/block/getHeadingDeleteTransaction", {
-                    id,
-                }, (response) => {
-                    response.data.doOperations.forEach((operation: IOperation) => {
-                        data.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
-                            itemElement.remove();
-                        });
-                    });
-                    if (data.protyle.wysiwyg.element.childElementCount === 0) {
-                        const newID = Lute.NewNodeID();
-                        const emptyElement = genEmptyElement(false, false, newID);
-                        data.protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
-                        response.data.doOperations.push({
-                            action: "insert",
-                            data: emptyElement.outerHTML,
-                            id: newID,
-                            parentID: data.protyle.block.parentID
-                        });
-                        response.data.undoOperations.push({
-                            action: "delete",
-                            id: newID,
-                        });
-                        focusBlock(emptyElement);
-                    }
-                    transaction(data.protyle, response.data.doOperations, response.data.undoOperations);
-                });
-            }
-        }).element);
-
-        window.siyuan.menus.menu.append(new MenuItem({type: "separator"}).element);
+                }
+            }).element);
+        }
+        window.siyuan.menus.menu.append(new MenuItem({id: "separator_3", type: "separator"}).element);
 
         // 展开子标题
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "expandChildHeading",
             icon: "iconExpand",
             label: window.siyuan.languages.expandChildHeading,
-            accelerator: updateHotkeyTip("⌘") + window.siyuan.languages.clickArrow,
+            accelerator: "⌘" + window.siyuan.languages.clickArrow,
             click: () => this.collapseChildren(element, true)
         }).element);
 
         // 折叠子标题
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "foldChildHeading",
             icon: "iconContract",
             label: window.siyuan.languages.foldChildHeading,
-            accelerator: updateHotkeyTip("⌘") + window.siyuan.languages.clickArrow,
+            accelerator: "⌘" + window.siyuan.languages.clickArrow,
             click: () => this.collapseChildren(element, false)
         }).element);
 
         // 展开同级标题
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "expandSameLevelHeading",
             icon: "iconExpand",
             label: window.siyuan.languages.expandSameLevelHeading,
-            accelerator: updateHotkeyTip("⌥") + window.siyuan.languages.clickArrow,
+            accelerator: "⌥" + window.siyuan.languages.clickArrow,
             click: () => this.collapseSameLevel(element, true)
         }).element);
 
         // 折叠同级标题
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "foldSameLevelHeading",
             icon: "iconContract",
             label: window.siyuan.languages.foldSameLevelHeading,
-            accelerator: updateHotkeyTip("⌥") + window.siyuan.languages.clickArrow,
+            accelerator: "⌥" + window.siyuan.languages.clickArrow,
             click: () => this.collapseSameLevel(element, false)
         }).element);
 
         // 全部展开
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "expandAll",
             icon: "iconExpand",
             label: window.siyuan.languages.expandAll,
             click: () => {
@@ -1196,6 +1220,7 @@ export class Outline extends Model {
 
         // 全部折叠
         window.siyuan.menus.menu.append(new MenuItem({
+            id: "foldAll",
             icon: "iconContract",
             label: window.siyuan.languages.foldAll,
             click: () => {

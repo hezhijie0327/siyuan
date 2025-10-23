@@ -243,6 +243,10 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 				}
 			}
 
+			if 1 > len(filter.Value.Rollup.Contents) {
+				return true
+			}
+
 			for _, content := range value.Rollup.Contents {
 				if content.filter(filter.Value.Rollup.Contents[0], filter.RelativeDate, filter.RelativeDate2, filter.Operator) {
 					return false
@@ -326,6 +330,10 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 				return false
 			}
 
+			if nil == filter.Value || 1 > len(filter.Value.MAsset) {
+				return true
+			}
+
 			for _, asset := range value.MAsset {
 				switch asset.Type {
 				case AssetTypeFile:
@@ -364,6 +372,10 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 				return true
 			}
 
+			if nil == filter.Value || 1 > len(filter.Value.MAsset) {
+				return true
+			}
+
 			for _, asset := range value.MAsset {
 				switch asset.Type {
 				case AssetTypeFile:
@@ -381,7 +393,7 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 		case FilterQuantifierNone:
 			if FilterOperatorIsEmpty == filter.Operator {
 				if 1 > len(value.MAsset) {
-					return true
+					return false
 				}
 
 				for _, asset := range value.MAsset {
@@ -392,7 +404,7 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 				return true
 			} else if FilterOperatorIsNotEmpty == filter.Operator {
 				if 1 > len(value.MAsset) {
-					return false
+					return true
 				}
 
 				for _, asset := range value.MAsset {
@@ -400,6 +412,10 @@ func (value *Value) Filter(filter *ViewFilter, attrView *AttributeView, itemID s
 						return false
 					}
 				}
+				return true
+			}
+
+			if nil == filter.Value || 1 > len(filter.Value.MAsset) {
 				return true
 			}
 

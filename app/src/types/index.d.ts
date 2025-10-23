@@ -245,6 +245,8 @@ interface Window {
         readHTMLClipboard(): string
         getBlockURL(): string
         hideKeyboard(): void
+        print(html: string): void
+        getScreenWidthPx(): number
     };
     JSHarmony: {
         openExternal(url: string): void
@@ -255,6 +257,8 @@ interface Window {
         readClipboard(): string
         readHTMLClipboard(): string
         returnDesktop(): void
+        print(html: string): void
+        getScreenWidthPx(): number
     };
 
     Protyle: import("../protyle/method").default;

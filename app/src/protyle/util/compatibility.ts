@@ -2,7 +2,7 @@ import {focusByRange} from "./selection";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {Constants} from "../../constants";
 /// #if !BROWSER
-import {clipboard} from "electron";
+import {clipboard, ipcRenderer} from "electron";
 /// #endif
 
 export const encodeBase64 = (text: string): string => {
@@ -98,6 +98,10 @@ export const readText = () => {
     } else if (isInHarmony()) {
         return window.JSHarmony.readClipboard();
     }
+    if (typeof navigator.clipboard === "undefined") {
+        alert(window.siyuan.languages.clipboardPermissionDenied);
+        return "";
+    }
     return navigator.clipboard.readText().catch(() => {
         alert(window.siyuan.languages.clipboardPermissionDenied);
     }) || "";
@@ -126,6 +130,26 @@ export const getLocalFiles = async () => {
 
 export const readClipboard = async () => {
     const text: IClipboardData = {textPlain: "", textHTML: "", siyuanHTML: ""};
+    if (isInAndroid()) {
+        text.textPlain = window.JSAndroid.readClipboard();
+        text.textHTML = window.JSAndroid.readHTMLClipboard();
+        const textObj = getTextSiyuanFromTextHTML(text.textHTML);
+        text.textHTML = textObj.textHtml;
+        text.siyuanHTML = textObj.textSiyuan;
+        return text;
+    }
+    if (isInHarmony()) {
+        text.textPlain = window.JSHarmony.readClipboard();
+        text.textHTML = window.JSHarmony.readHTMLClipboard();
+        const textObj = getTextSiyuanFromTextHTML(text.textHTML);
+        text.textHTML = textObj.textHtml;
+        text.siyuanHTML = textObj.textSiyuan;
+        return text;
+    }
+    if (typeof navigator.clipboard === "undefined") {
+        alert(window.siyuan.languages.clipboardPermissionDenied);
+        return text;
+    }
     try {
         const clipboardContents = await navigator.clipboard.read().catch(() => {
             alert(window.siyuan.languages.clipboardPermissionDenied);
@@ -157,19 +181,6 @@ export const readClipboard = async () => {
         /// #endif
         return text;
     } catch (e) {
-        if (isInAndroid()) {
-            text.textPlain = window.JSAndroid.readClipboard();
-            text.textHTML = window.JSAndroid.readHTMLClipboard();
-            const textObj = getTextSiyuanFromTextHTML(text.textHTML);
-            text.textHTML = textObj.textHtml;
-            text.siyuanHTML = textObj.textSiyuan;
-        } else if (isInHarmony()) {
-            text.textPlain = window.JSHarmony.readClipboard();
-            text.textHTML = window.JSHarmony.readHTMLClipboard();
-            const textObj = getTextSiyuanFromTextHTML(text.textHTML);
-            text.textHTML = textObj.textHtml;
-            text.siyuanHTML = textObj.textSiyuan;
-        }
         return text;
     }
 };
@@ -289,6 +300,15 @@ export const isWin11 = async () => {
         }
     }
     return false;
+};
+
+export const getScreenWidth = () => {
+    if (isInAndroid()) {
+        return window.JSAndroid.getScreenWidthPx();
+    } else if (isInHarmony()) {
+        return window.JSHarmony.getScreenWidthPx();
+    }
+    return window.outerWidth;
 };
 
 export const isWindows = () => {
@@ -499,7 +519,7 @@ export const getLocalStorage = (cb: () => void) => {
 };
 
 export const setStorageVal = (key: string, val: any, cb?: () => void) => {
-    if (window.siyuan.config.readonly) {
+    if (window.siyuan.config.readonly || window.siyuan.isPublish) {
         return;
     }
     fetchPost("/api/storage/setLocalStorageVal", {
@@ -512,3 +532,38 @@ export const setStorageVal = (key: string, val: any, cb?: () => void) => {
         }
     });
 };
+
+/// #if !BROWSER
+export const initFocusFix = () => {
+    if (!isWindows()) {
+        return;
+    }
+    const originalAlert = window.alert;
+    const originalConfirm = window.confirm;
+    const fixFocusAfterDialog = () => {
+        ipcRenderer.send("siyuan-focus-fix");
+    };
+    window.alert = function (message: string) {
+        try {
+            const result = originalAlert.call(this, message);
+            fixFocusAfterDialog();
+            return result;
+        } catch (error) {
+            console.error("alert error:", error);
+            fixFocusAfterDialog();
+            return undefined;
+        }
+    };
+    window.confirm = function (message: string) {
+        try {
+            const result = originalConfirm.call(this, message);
+            fixFocusAfterDialog();
+            return result;
+        } catch (error) {
+            console.error("confirm error:", error);
+            fixFocusAfterDialog();
+            return false;
+        }
+    };
+};
+/// #endif
