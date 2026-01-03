@@ -83,8 +83,8 @@ export const isFileAnnotation = (text: string) => {
     return /^<<assets\/.+\/\d{14}-\w{7} ".+">>$/.test(text);
 };
 
-export const isValidAttrName = (name: string) => {
-    return /^[_a-zA-Z][_.\-0-9a-zA-Z]*$/.test(name);
+export const isValidCustomAttrName = (name: string) => {
+    return /^[a-z][\-0-9a-z]*$/.test(name);
 };
 
 // REF https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/eval
@@ -104,6 +104,10 @@ export const objEquals = (a: any, b: any): boolean => {
 };
 
 export const duplicateNameAddOne = (name:string) => {
+    if (!name) {
+        return "";
+    }
+
     const nameMatch = name.match(/^(.*) \((\d+)\)$/);
     if (nameMatch) {
         name = `${nameMatch[1]} (${parseInt(nameMatch[2]) + 1})`;

@@ -7,7 +7,7 @@ import {openSetting} from "../config";
 import {Constants} from "../constants";
 
 export const openTopBarMenu = (app: App, target?: Element) => {
-    const menu = new Menu("topBarPlugin");
+    const menu = new Menu(Constants.MENU_BAR_PLUGIN);
     /// #if !MOBILE
     menu.addItem({
         id: "manage",
@@ -18,7 +18,7 @@ export const openTopBarMenu = (app: App, target?: Element) => {
             openSetting(app).element.querySelector('.b3-tab-bar [data-name="bazaar"]').dispatchEvent(new CustomEvent("click"));
         }
     });
-    menu.addSeparator({id: "separator_1"}, isHuawei() || window.siyuan.config.readonly);
+    menu.addSeparator({id: "separator_1", ignore: isHuawei() || window.siyuan.config.readonly});
     /// #endif
     let hasPlugin = false;
     app.plugins.forEach((plugin) => {
