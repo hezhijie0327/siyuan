@@ -34,7 +34,6 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/siyuan-note/logging"
 	"github.com/siyuan-note/siyuan/kernel/util"
-	"golang.org/x/mod/semver"
 )
 
 func execNewVerInstallPkg(newVerInstallPkgPath string) {
