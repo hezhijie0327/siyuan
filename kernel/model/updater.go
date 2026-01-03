@@ -301,7 +301,7 @@ func CheckUpdate(showMsg bool) {
 }
 
 func isVersionUpToDate(releaseVer string) bool {
-	return semver.Compare("v"+releaseVer, "v"+util.Ver) <= 0
+	return true
 }
 
 // skipInstallPkgPlatformCached 缓存平台相关判断，-1 未初始化，0 表示不跳过，1 表示跳过
