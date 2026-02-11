@@ -113,8 +113,7 @@ func (box *Box) Unindex() {
 }
 
 func unindex(boxID string) {
-	ids := treenode.RemoveBlockTreesByBoxID(boxID)
-	RemoveRecentDoc(ids)
+	treenode.RemoveBlockTreesByBoxID(boxID)
 	sql.DeleteBoxQueue(boxID)
 }
 
@@ -198,6 +197,11 @@ func indexBox(boxID string) {
 	})
 	for _, file := range files {
 		if file.isdir || !strings.HasSuffix(file.name, ".sy") {
+			continue
+		}
+
+		if !ast.IsNodeIDPattern(strings.TrimSuffix(file.name, ".sy")) {
+			// 不以块 ID 命名的 .sy 文件不应该被加载到思源中 https://github.com/siyuan-note/siyuan/issues/16089
 			continue
 		}
 

@@ -138,7 +138,7 @@ export const genAVValueHTML = (value: IAVCellValue) => {
                 if (item && item.block) {
                     const rowID = value.relation.blockIDs[index];
                     if (item?.isDetached) {
-                        html += `<span data-row-id="${rowID}" class="av__cell--relation"><span class="b3-menu__avemoji">➖</span><span class="av__celltext">${Lute.EscapeHTMLStr(item.block.content || window.siyuan.languages.untitled)}</span></span>`;
+                        html += `<span data-row-id="${rowID}" class="av__cell--relation"><span>➖<span class="fn__space--5"></span></span><span class="av__celltext">${Lute.EscapeHTMLStr(item.block.content || window.siyuan.languages.untitled)}</span></span>`;
                     } else {
                         // data-block-id 用于更新 emoji
                         html += `<span data-row-id="${rowID}" class="av__cell--relation" data-block-id="${item.block.id}"><span class="b3-menu__avemoji" data-unicode="${item.block.icon || ""}">${unicode2Emoji(item.block.icon || window.siyuan.storage[Constants.LOCAL_IMAGES].file)}</span><span data-type="block-ref" data-id="${item.block.id}" data-subtype="s" class="av__celltext av__celltext--ref">${Lute.EscapeHTMLStr(item.block.content || window.siyuan.languages.untitled)}</span></span>`;
@@ -275,9 +275,12 @@ class="fn__flex-1 fn__flex${["url", "text", "number", "email", "phone", "block"]
                     const cellElement = element.querySelector(".custom-attr__avvalue--active") as HTMLElement;
                     if (cellElement) {
                         if (event.dataTransfer.types[0] === "Files" && !isBrowser()) {
-                            const files: string[] = [];
+                            const files: ILocalFiles[] = [];
                             for (let i = 0; i < event.dataTransfer.files.length; i++) {
-                                files.push(webUtils.getPathForFile(event.dataTransfer.files[i]));
+                                files.push({
+                                    path: webUtils.getPathForFile(event.dataTransfer.files[i]),
+                                    size: event.dataTransfer.files[i].size
+                                });
                             }
                             dragUpload(files, protyle, cellElement);
                         }
@@ -572,4 +575,8 @@ const openEdit = (protyle: IProtyle, element: HTMLElement, event: MouseEvent) =>
         }
         target = target.parentElement;
     }
+};
+
+export const isCustomAttr = (cellElement: Element) => {
+    return !!cellElement.getAttribute("data-av-id");
 };

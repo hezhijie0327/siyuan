@@ -4,7 +4,7 @@ import {FileFilter, ipcRenderer} from "electron";
 import * as path from "path";
 /// #endif
 import {MenuItem} from "./Menu";
-import {getDisplayName, getNotebookName, getTopPaths, useShell, pathPosix} from "../util/pathName";
+import {getDisplayName, getNotebookName, getTopPaths, pathPosix, useShell} from "../util/pathName";
 import {hideMessage, showMessage} from "../dialog/message";
 import {fetchPost, fetchSyncPost} from "../util/fetch";
 import {onGetnotebookconf} from "./onGetnotebookconf";
@@ -32,6 +32,7 @@ import {openByMobile} from "../protyle/util/compatibility";
 import {addFilesToDatabase} from "../protyle/render/av/addToDatabase";
 
 const initMultiMenu = (selectItemElements: NodeListOf<Element>, app: App) => {
+    window.siyuan.menus.menu.element.setAttribute("data-from", Constants.MENU_FROM_DOC_TREE_MORE_ITEMS);
     const fileItemElement = Array.from(selectItemElements).find(item => {
         if (item.getAttribute("data-type") === "navigation-file") {
             return true;
@@ -157,6 +158,19 @@ const initMultiMenu = (selectItemElements: NodeListOf<Element>, app: App) => {
         type: "submenu",
         icon: "iconUpload",
         submenu: [{
+            id: "exportSiYuanZip",
+            label: "SiYuan .sy.zip",
+            icon: "iconSiYuan",
+            click: () => {
+                const msgId = showMessage(window.siyuan.languages.exporting, -1);
+                fetchPost("/api/export/exportSYs", {
+                    ids: blockIDs,
+                }, response => {
+                    hideMessage(msgId);
+                    openByMobile(response.data.zip);
+                });
+            }
+        }, {
             id: "exportMarkdown",
             label: "Markdown .zip",
             icon: "iconMarkdown",
@@ -187,6 +201,7 @@ const initMultiMenu = (selectItemElements: NodeListOf<Element>, app: App) => {
 
 export const initNavigationMenu = (app: App, liElement: HTMLElement) => {
     window.siyuan.menus.menu.remove();
+    window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_DOC_TREE_MORE);
     const fileElement = hasClosestByTag(liElement, "DIV");
     if (!fileElement) {
         return window.siyuan.menus.menu;
@@ -203,6 +218,7 @@ export const initNavigationMenu = (app: App, liElement: HTMLElement) => {
     if (selectItemElements.length > 1) {
         return initMultiMenu(selectItemElements, app);
     }
+    window.siyuan.menus.menu.element.setAttribute("data-from", Constants.MENU_FROM_DOC_TREE_MORE_NOTEBOOK);
     const notebookId = liElement.parentElement.getAttribute("data-url");
     const name = getNotebookName(notebookId);
     if (!window.siyuan.config.readonly) {
@@ -417,6 +433,7 @@ export const initNavigationMenu = (app: App, liElement: HTMLElement) => {
 
 export const initFileMenu = (app: App, notebookId: string, pathString: string, liElement: Element) => {
     window.siyuan.menus.menu.remove();
+    window.siyuan.menus.menu.element.setAttribute("data-name", Constants.MENU_DOC_TREE_MORE);
     const fileElement = hasClosestByTag(liElement, "DIV");
     if (!fileElement) {
         return window.siyuan.menus.menu;
@@ -706,7 +723,7 @@ export const initFileMenu = (app: App, notebookId: string, pathString: string, l
             separatorPosition: "top",
         });
     }
-    window.siyuan.menus.menu.element.setAttribute("data-name", "docTreeMore");
+    window.siyuan.menus.menu.element.setAttribute("data-from", Constants.MENU_FROM_DOC_TREE_MORE_DOC);
     return window.siyuan.menus.menu;
 };
 
