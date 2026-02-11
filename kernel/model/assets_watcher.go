@@ -73,12 +73,6 @@ func watchAssets() {
 
 				lastEvent = event
 				timer.Reset(time.Millisecond * 100)
-
-				if lastEvent.Op&fsnotify.Rename == fsnotify.Rename || lastEvent.Op&fsnotify.Write == fsnotify.Write {
-					HandleAssetsChangeEvent(lastEvent.Name)
-				} else if lastEvent.Op&fsnotify.Remove == fsnotify.Remove {
-					HandleAssetsRemoveEvent(lastEvent.Name)
-				}
 			case err, ok := <-assetsWatcher.Errors:
 				if !ok {
 					return

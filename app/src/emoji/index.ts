@@ -27,8 +27,10 @@ export const unicode2Emoji = (unicode: string, className = "", needSpan = false,
     let emoji = "";
     if (unicode.startsWith("api/icon/getDynamicIcon")) {
         emoji = `<img class="${className}" ${lazy ? "data-" : ""}src="${unicode}"/>`;
+        emoji = Lute.Sanitize(emoji);
     } else if (unicode.indexOf(".") > -1) {
         emoji = `<img class="${className}" ${lazy ? "data-" : ""}src="/emojis/${unicode}"/>`;
+        emoji = Lute.Sanitize(emoji);
     } else {
         try {
             unicode.split("-").forEach(item => {
@@ -560,7 +562,6 @@ export const openEmojiPanel = (
                         notebook: id,
                         icon: ""
                     }, () => {
-                        dialog.destroy();
                         updateFileTreeEmoji("", id, "iconFilesRoot");
                     });
                 } else if (type === "doc") {
@@ -568,7 +569,6 @@ export const openEmojiPanel = (
                         id: id,
                         attrs: {"icon": ""}
                     }, () => {
-                        dialog.destroy();
                         updateFileTreeEmoji("", id);
                         updateOutlineEmoji("", id);
                     });
@@ -576,6 +576,7 @@ export const openEmojiPanel = (
                 if (callback) {
                     callback("");
                 }
+                dialog.destroy();
                 break;
             } else if (target.classList.contains("emojis__item") || target.getAttribute("data-action") === "random" || target.classList.contains("emoji__dynamic-item")) {
                 let unicode = "";
@@ -603,7 +604,6 @@ export const openEmojiPanel = (
                     }, () => {
                         updateFileTreeEmoji(unicode, id);
                         updateOutlineEmoji(unicode, id);
-
                     });
                 }
                 if (callback) {

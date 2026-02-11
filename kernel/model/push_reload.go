@@ -138,10 +138,17 @@ func refreshDocInfoWithSize(tree *parse.Tree, size uint64) {
 	}
 
 	refreshDocInfo0(tree, size)
-	refreshParentDocInfo(tree)
+	go func() {
+		time.Sleep(128 * time.Millisecond)
+		refreshParentDocInfo(tree)
+	}()
 }
 
 func refreshParentDocInfo(tree *parse.Tree) {
+	if nil == tree {
+		return
+	}
+
 	parentTree := loadParentTree(tree)
 	if nil == parentTree {
 		return

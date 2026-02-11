@@ -214,10 +214,13 @@ var (
 	subscriptionExpirationReminded bool
 )
 
-func RefreshCheckJob() {
+func RefreshCheckJob2H() {
 	go refreshSubscriptionExpirationRemind()
 	go refreshUser()
 	go refreshAnnouncement()
+}
+
+func RefreshCheckJob6H() {
 	go refreshCheckDownloadInstallPkg()
 }
 
@@ -357,8 +360,13 @@ Net:
 	start := time.Now()
 	user, err := getUser(token)
 	if err != nil {
-		if nil == Conf.GetUser() || errInvalidUser == err {
+		if nil == Conf.GetUser() || errors.Is(err, errInvalidUser) {
 			util.PushErrMsg(Conf.Language(19), 5000)
+			return
+		}
+
+		if errors.Is(err, errRequestUserFailed) {
+			util.PushErrMsg(Conf.Language(18), 5000)
 			return
 		}
 
@@ -529,7 +537,10 @@ func GetCloudShorthands(page int) (result map[string]interface{}, err error) {
 	return
 }
 
-var errInvalidUser = errors.New("invalid user")
+var (
+	errInvalidUser       = errors.New("invalid user")
+	errRequestUserFailed = errors.New("request user failed")
+)
 
 func getUser(token string) (*conf.User, error) {
 	result := map[string]interface{}{}
@@ -540,11 +551,11 @@ func getUser(token string) (*conf.User, error) {
 		Post(util.GetCloudServer() + "/apis/siyuan/user")
 	if err != nil {
 		logging.LogErrorf("get community user failed: %s", err)
-		return nil, errors.New(Conf.Language(18))
+		return nil, errRequestUserFailed
 	}
 	if http.StatusOK != resp.StatusCode {
 		logging.LogErrorf("get community user failed: %d", resp.StatusCode)
-		return nil, errors.New(Conf.Language(18))
+		return nil, errRequestUserFailed
 	}
 
 	code := result["code"].(float64)
@@ -553,7 +564,7 @@ func getUser(token string) (*conf.User, error) {
 			return nil, errInvalidUser
 		}
 		logging.LogErrorf("get community user failed: %s", result["msg"])
-		return nil, errors.New(Conf.Language(18))
+		return nil, errRequestUserFailed
 	}
 
 	dataStr := result["data"].(string)
@@ -561,7 +572,7 @@ func getUser(token string) (*conf.User, error) {
 	user := &conf.User{}
 	if err = gulu.JSON.UnmarshalJSON(data, &user); err != nil {
 		logging.LogErrorf("get community user failed: %s", err)
-		return nil, errors.New(Conf.Language(18))
+		return nil, errRequestUserFailed
 	}
 	return user, nil
 }

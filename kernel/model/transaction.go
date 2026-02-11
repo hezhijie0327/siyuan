@@ -167,11 +167,8 @@ func performTx(tx *Transaction) (ret *TxErr) {
 	}()
 
 	isLargeInsert := tx.processLargeInsert()
-	isLargeDelete := false
+	tx.processLargeDelete()
 	if !isLargeInsert {
-		isLargeDelete = tx.processLargeDelete()
-	}
-	if !isLargeInsert && !isLargeDelete {
 		for _, op := range tx.DoOperations {
 			switch op.Action {
 			case "create":
@@ -347,16 +344,14 @@ func (tx *Transaction) processLargeDelete() bool {
 	}
 
 	var deleteOps []*Operation
-	var lastInsertOp *Operation
+	var lastOp *Operation
 	for i, op := range tx.DoOperations {
 		if "delete" != op.Action {
 			if i != opSize-1 {
 				return false
 			}
 
-			if "insert" == op.Action && "" != op.ParentID && "" == op.PreviousID {
-				lastInsertOp = op
-			}
+			lastOp = op
 			continue
 		}
 
@@ -368,8 +363,8 @@ func (tx *Transaction) processLargeDelete() bool {
 	}
 
 	tx.doLargeDelete(deleteOps)
-	if nil != lastInsertOp {
-		tx.doInsert(lastInsertOp)
+	if nil != lastOp {
+		tx.DoOperations = []*Operation{lastOp}
 	}
 	return true
 }
@@ -444,6 +439,11 @@ func (tx *Transaction) doMove(operation *Operation) (ret *TxErr) {
 	if ast.NodeListItem == srcNode.Type && srcNode.Parent.FirstChild == srcNode && srcNode.Parent.LastChild == srcNode {
 		// 列表中唯一的列表项被移除后，该列表就为空了
 		srcEmptyList = srcNode.Parent
+	}
+
+	if nil != operation.Context && "true" == operation.Context["removeFold"] {
+		srcNode.RemoveIALAttr("heading-fold")
+		srcNode.RemoveIALAttr("fold")
 	}
 
 	targetPreviousID := operation.PreviousID
@@ -1303,6 +1303,9 @@ func (tx *Transaction) doInsert0(operation *Operation, tree *parse.Tree) (ret *T
 	insertedNode.RemoveIALAttr(av.NodeAttrNameAvs)
 	insertedNode.RemoveIALAttr(av.NodeAttrViewNames)
 	insertedNode.RemoveIALAttrsByPrefix(av.NodeAttrViewStaticText)
+
+	// 复制为副本时移除闪卡相关属性 https://github.com/siyuan-note/siyuan/issues/13987
+	insertedNode.RemoveIALAttr(NodeAttrRiffDecks)
 
 	if ast.NodeAttributeView == insertedNode.Type {
 		// 插入数据库块时需要重新绑定其中已经存在的块
