@@ -11,7 +11,7 @@ import {getThemeMode, setInlineStyle} from "../../util/assets";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {Dialog} from "../../dialog";
 import {replaceLocalPath} from "../../editor/rename";
-import {getScreenWidth, isInAndroid, isInHarmony, setStorageVal} from "../util/compatibility";
+import {getScreenWidth, isInAndroid, isInHarmony, isInIOS, setStorageVal} from "../util/compatibility";
 import {getFrontend} from "../../util/functions";
 
 const getPluginStyle = async () => {
@@ -24,8 +24,43 @@ const getPluginStyle = async () => {
     return css;
 };
 
+const getIconScript = (servePath: string) => {
+    const isBuiltInIcon = ["ant", "material"].includes(window.siyuan.config.appearance.icon);
+    const html = isBuiltInIcon ? "" : `<script src="${servePath}appearance/icons/material/icon.js?v=${Constants.SIYUAN_VERSION}"></script>`;
+    return html + `<script src="${servePath}appearance/icons/${window.siyuan.config.appearance.icon}/icon.js?v=${Constants.SIYUAN_VERSION}"></script>`;
+};
+
 export const saveExport = (option: IExportOptions) => {
-    /// #if !BROWSER
+    /// #if BROWSER
+    if (["html", "htmlmd"].includes(option.type)) {
+        const msgId = showMessage(window.siyuan.languages.exporting, -1);
+        // 浏览器环境：先调用 API 生成资源文件，再在前端生成完整的 HTML
+        const url = option.type === "htmlmd" ? "/api/export/exportMdHTML" : "/api/export/exportHTML";
+        fetchPost(url, {
+            id: option.id,
+            pdf: false,
+            removeAssets: false,
+            merge: true,
+            savePath: ""
+        }, async exportResponse => {
+            const html = await onExport(exportResponse, undefined, "", option);
+            fetchPost("/api/export/exportBrowserHTML", {
+                folder: exportResponse.data.folder,
+                html: html,
+                name: exportResponse.data.name
+            }, zipResponse => {
+                hideMessage(msgId);
+                if (zipResponse.code === -1) {
+                    showMessage(window.siyuan.languages._kernel[14].replace("%s", zipResponse.msg), 0, "error");
+                    return;
+                }
+                window.open(zipResponse.data.zip);
+                showMessage(window.siyuan.languages.exported);
+            });
+        });
+        return;
+    }
+    /// #else
     if (option.type === "pdf") {
         if (window.siyuan.config.appearance.mode === 1) {
             confirmDialog(window.siyuan.languages.pdfTip, window.siyuan.languages.pdfConfirm, () => {
@@ -82,21 +117,35 @@ export const saveExport = (option: IExportOptions) => {
 const getSnippetCSS = () => {
     let snippetCSS = "";
     document.querySelectorAll("style").forEach((item) => {
-        if (item.id.startsWith("snippet")) {
+        if (item.id.startsWith("snippetCSS")) {
             snippetCSS += item.outerHTML;
         }
     });
     return snippetCSS;
 };
 
+const getSnippetJS = () => {
+    let snippetScript = "";
+    document.querySelectorAll("script").forEach((item) => {
+        if (item.id.startsWith("snippetJS")) {
+            snippetScript += item.outerHTML;
+        }
+    });
+    return snippetScript;
+};
+
 /// #if !BROWSER
 const renderPDF = async (id: string) => {
     const localData = window.siyuan.storage[Constants.LOCAL_EXPORTPDF];
-    const servePath = window.location.protocol + "//" + window.location.host;
+    if (typeof localData.paged === "undefined") {
+        localData.paged = true;
+    }
+    const servePathWithoutTrailingSlash = window.location.protocol + "//" + window.location.host;
+    const servePath = servePathWithoutTrailingSlash + "/";
     const isDefault = (window.siyuan.config.appearance.mode === 1 && window.siyuan.config.appearance.themeDark === "midnight") || (window.siyuan.config.appearance.mode === 0 && window.siyuan.config.appearance.themeLight === "daylight");
     let themeStyle = "";
     if (!isDefault) {
-        themeStyle = `<link rel="stylesheet" type="text/css" id="themeStyle" href="${servePath}/appearance/themes/${window.siyuan.config.appearance.themeLight}/theme.css?${Constants.SIYUAN_VERSION}"/>`;
+        themeStyle = `<link rel="stylesheet" type="text/css" id="themeStyle" href="${servePath}appearance/themes/${window.siyuan.config.appearance.themeLight}/theme.css?${Constants.SIYUAN_VERSION}"/>`;
     }
     const currentWindowId = await ipcRenderer.invoke(Constants.SIYUAN_GET, {
         cmd: "getContentsId",
@@ -105,15 +154,15 @@ const renderPDF = async (id: string) => {
     const html = `<!DOCTYPE html>
 <html lang="${window.siyuan.config.appearance.lang}" data-theme-mode="light" data-light-theme="${window.siyuan.config.appearance.themeLight}" data-dark-theme="${window.siyuan.config.appearance.themeDark}">
 <head>
-    <base href="${servePath}/">
+    <base href="${servePath}">
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
     <meta name="mobile-web-app-capable" content="yes"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <link rel="stylesheet" type="text/css" id="baseStyle" href="${servePath}/stage/build/export/base.css?v=${Constants.SIYUAN_VERSION}"/>
-    <link rel="stylesheet" type="text/css" id="themeDefaultStyle" href="${servePath}/appearance/themes/daylight/theme.css?v=${Constants.SIYUAN_VERSION}"/>
-    <script src="${servePath}/stage/protyle/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}"></script>
+    <link rel="stylesheet" type="text/css" id="baseStyle" href="${servePath}stage/build/export/base.css?v=${Constants.SIYUAN_VERSION}"/>
+    <link rel="stylesheet" type="text/css" id="themeDefaultStyle" href="${servePath}appearance/themes/daylight/theme.css?v=${Constants.SIYUAN_VERSION}"/>
+    <script src="${servePath}stage/protyle/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}"></script>
     ${themeStyle}
     <title>${window.siyuan.languages.export} PDF</title>
     <style>
@@ -125,7 +174,7 @@ const renderPDF = async (id: string) => {
         #action {
           width: 232px;
           background: var(--b3-theme-surface);
-          padding: 16px 0;
+          padding: 12px 0;
           position: fixed;
           right: 0;
           top: 0;
@@ -170,12 +219,16 @@ const renderPDF = async (id: string) => {
           border-bottom: 1px solid var(--b3-theme-surface-lighter);
           display: block;
           color: var(--b3-theme-on-surface);
-          padding-bottom: 16px;
-          margin: 0 16px 16px 16px;
+          padding-bottom: 12px;
+          margin: 0 12px 12px 12px;
         }
         
         .b3-label:last-child {
             border-bottom: none;
+        }
+        
+        #preview .render-node[data-subtype="plantuml"] object {
+            max-width: 100%;
         }
         ${await setInlineStyle(false, servePath)}
         ${await getPluginStyle()}
@@ -288,8 +341,15 @@ const renderPDF = async (id: string) => {
             <span class="fn__hr"></span>
             <input id="watermark" class="b3-switch" type="checkbox" ${localData.watermark ? "checked" : ""}>
         </label>
+        <label class="b3-label">
+            <div>
+                ${window.siyuan.languages.paged}
+            </div>
+            <span class="fn__hr"></span>
+            <input id="paged" class="b3-switch" type="checkbox" ${localData.paged ? "checked" : ""}>
+        </label>
     </div>
-    <div class="fn__flex" style="padding: 0 16px">
+    <div class="fn__flex" style="padding: 0 12px">
       <div class="fn__flex-1"></div>
       <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button>
       <div class="fn__space"></div>
@@ -297,11 +357,11 @@ const renderPDF = async (id: string) => {
     </div>
 </div>
 <div style="zoom:${localData.scale || 1}" id="preview">
-    <div class="fn__loading" style="left:0;height:100vh"><img width="48px" src="${servePath}/stage/loading-pure.svg"></div>
+    <div class="fn__loading" style="left:0;height:100vh"><img width="48px" src="${servePath}stage/loading-pure.svg"></div>
 </div>
-<script src="${servePath}/appearance/icons/${window.siyuan.config.appearance.icon}/icon.js?${Constants.SIYUAN_VERSION}"></script>
-<script src="${servePath}/stage/build/export/protyle-method.js?${Constants.SIYUAN_VERSION}"></script>
-<script src="${servePath}/stage/protyle/js/lute/lute.min.js?${Constants.SIYUAN_VERSION}"></script>    
+${getIconScript(servePath)}
+<script src="${servePath}stage/build/export/protyle-method.js?${Constants.SIYUAN_VERSION}"></script>
+<script src="${servePath}stage/protyle/js/lute/lute.min.js?${Constants.SIYUAN_VERSION}"></script>    
 <script>
     const previewElement = document.getElementById('preview');
     const fixBlockWidth = () => {
@@ -339,7 +399,7 @@ const renderPDF = async (id: string) => {
             item.parentElement.style.width = Math.min(item.parentElement.clientWidth, width) + "px";
             item.removeAttribute('data-render');
         })
-        Protyle.highlightRender(previewElement, "${servePath}/stage/protyle", document.querySelector("#scale").value);
+        Protyle.highlightRender(previewElement, "${servePath}stage/protyle", document.querySelector("#scale").value);
         previewElement.querySelectorAll('[data-type="NodeMathBlock"]').forEach((item) => {
             // 超级块内不能移除 width https://github.com/siyuan-note/siyuan/issues/14318
             item.removeAttribute('data-render');
@@ -347,7 +407,7 @@ const renderPDF = async (id: string) => {
         previewElement.querySelectorAll('[data-type="NodeCodeBlock"][data-subtype="mermaid"] svg').forEach((item) => {
             item.style.maxHeight = width * 1.414 + "px";
         })
-        Protyle.mathRender(previewElement, "${servePath}/stage/protyle", true);
+        Protyle.mathRender(previewElement, "${servePath}stage/protyle", true);
         previewElement.querySelectorAll("table").forEach(item => {
             if (item.clientWidth > item.parentElement.clientWidth) {
                 item.style.zoom = (item.parentElement.clientWidth / item.clientWidth).toFixed(2) - 0.01;
@@ -404,7 +464,7 @@ const renderPDF = async (id: string) => {
         }, 300);
     }
     const fetchPost = (url, data, cb) => {
-        fetch("${servePath}" + url, {
+        fetch("${servePathWithoutTrailingSlash}" + url, {
             method: "POST",
             body: JSON.stringify(data)
         }).then((response) => {
@@ -426,14 +486,14 @@ const renderPDF = async (id: string) => {
                 item.insertAdjacentHTML("beforeend", "<hr style='margin:0;border:0'>");
             }
         })
-        Protyle.mermaidRender(wysElement, "${servePath}/stage/protyle");
-        Protyle.flowchartRender(wysElement, "${servePath}/stage/protyle");
-        Protyle.graphvizRender(wysElement, "${servePath}/stage/protyle");
-        Protyle.chartRender(wysElement, "${servePath}/stage/protyle");
-        Protyle.mindmapRender(wysElement, "${servePath}/stage/protyle");
-        Protyle.abcRender(wysElement, "${servePath}/stage/protyle");
+        Protyle.mermaidRender(wysElement, "${servePath}stage/protyle");
+        Protyle.flowchartRender(wysElement, "${servePath}stage/protyle");
+        Protyle.graphvizRender(wysElement, "${servePath}stage/protyle");
+        Protyle.chartRender(wysElement, "${servePath}stage/protyle");
+        Protyle.mindmapRender(wysElement, "${servePath}stage/protyle");
+        Protyle.abcRender(wysElement, "${servePath}stage/protyle");
         Protyle.htmlRender(wysElement);
-        Protyle.plantumlRender(wysElement, "${servePath}/stage/protyle");
+        Protyle.plantumlRender(wysElement, "${servePath}stage/protyle");
     }
     fetchPost("/api/export/exportPreviewHTML", {
         id: "${id}",
@@ -449,6 +509,7 @@ const renderPDF = async (id: string) => {
           config: {
             appearance: { mode: 0, codeBlockThemeDark: "${window.siyuan.config.appearance.codeBlockThemeDark}", codeBlockThemeLight: "${window.siyuan.config.appearance.codeBlockThemeLight}" },
             editor: { 
+              allowSVGScriptTip: ${window.siyuan.config.editor.allowSVGScript},
               allowHTMLBLockScript: ${window.siyuan.config.editor.allowHTMLBLockScript},
               fontSize: ${window.siyuan.config.editor.fontSize},
               codeLineWrap: true,
@@ -474,9 +535,7 @@ const renderPDF = async (id: string) => {
                         return;
                     }
                 } else if (target.classList.contains("protyle-action__copy")) {
-                    let text = target.parentElement.nextElementSibling.textContent.trimEnd();
-                    text = text.replace(/\u00A0/g, " "); // Replace non-breaking spaces with normal spaces when copying https://github.com/siyuan-note/siyuan/issues/9382
-                    navigator.clipboard.writeText(text);
+                    navigator.clipboard.writeText(target.parentElement.nextElementSibling.textContent.trimEnd().replace(/\u00A0/g, " ").replace(/\u200D\`\`\`/g, "\`\`\`"));
                     event.preventDefault();
                     event.stopPropagation();
                     break;
@@ -495,7 +554,7 @@ const renderPDF = async (id: string) => {
         });
         const  watermarkElement = actionElement.querySelector('#watermark');
         const refreshPreview = () => {
-            previewElement.innerHTML = '<div class="fn__loading" style="left:0;height: 100vh"><img width="48px" src="${servePath}/stage/loading-pure.svg"></div>'
+            previewElement.innerHTML = '<div class="fn__loading" style="left:0;height: 100vh"><img width="48px" src="${servePath}stage/loading-pure.svg"></div>'
             fetchPost("/api/export/exportPreviewHTML", {
                 id: "${id}",
                 keepFold: keepFoldElement.checked,
@@ -509,7 +568,7 @@ const renderPDF = async (id: string) => {
                 renderPreview(response2.data);
             })
         };
-        
+
         actionElement.querySelector("#scale").addEventListener("input", () => {
             const scale = actionElement.querySelector("#scale").value;
             actionElement.querySelector("#scaleTip").innerText = scale;
@@ -539,38 +598,70 @@ const renderPDF = async (id: string) => {
         actionElement.querySelector("#marginsLeft").addEventListener('change', () => {
             setPadding();
         });
-        actionElement.querySelector("#landscape").addEventListener('change', () => {
+        actionElement.querySelector("#landscape").addEventListener('change', (e) => {
             setPadding();
         });
         actionElement.querySelector('.b3-button--cancel').addEventListener('click', () => {
             const {ipcRenderer}  = require("electron");
             ipcRenderer.send("${Constants.SIYUAN_CMD}", "destroy")
         });
+        const buildExportConfig = (unPagedPageSize) => {
+            const pageSize = actionElement.querySelector("#pageSize").value;
+            // https://www.electronjs.org/docs/latest/api/web-contents#contentsprinttopdfoptions
+            // https://chromedevtools.github.io/devtools-protocol/tot/Page/#method-printToPDF
+            return {
+                title: "${window.siyuan.languages.export} PDF",
+                pdfOptions: {
+                    printBackground: true,
+                    landscape: actionElement.querySelector("#landscape").checked,
+                    marginType: actionElement.querySelector("#marginsType").value,
+                    margins: {
+                        top: parseFloat(document.querySelector("#marginsTop").value) || 0,
+                        bottom: parseFloat(document.querySelector("#marginsBottom").value) || 0,
+                        left: parseFloat(document.querySelector("#marginsLeft").value) || 0,
+                        right: parseFloat(document.querySelector("#marginsRight").value) || 0,
+                    },
+                    scale: parseFloat(actionElement.querySelector("#scale").value),
+                    pageSize: unPagedPageSize || pageSize,
+                },
+                pageSize,
+                keepFold: keepFoldElement.checked,
+                mergeSubdocs: mergeSubdocsElement.checked,
+                watermark: watermarkElement.checked,
+                removeAssets: actionElement.querySelector("#removeAssets").checked,
+                paged: !unPagedPageSize,
+                rootId: "${id}",
+                rootTitle: response.data.name,
+                parentWindowId: ${currentWindowId},
+            };
+        };
         actionElement.querySelector('.b3-button--text').addEventListener('click', () => {
             const {ipcRenderer}  = require("electron");
-            ipcRenderer.send("${Constants.SIYUAN_EXPORT_PDF}", {
-              title: "${window.siyuan.languages.export} PDF",
-              pdfOptions:{
-                printBackground: true,
-                landscape: actionElement.querySelector("#landscape").checked,
-                marginType: actionElement.querySelector("#marginsType").value,
-                margins: {
-                  top: parseFloat(document.querySelector("#marginsTop").value),
-                  bottom: parseFloat(document.querySelector("#marginsBottom").value),
-                  left: parseFloat(document.querySelector("#marginsLeft").value),
-                  right: parseFloat(document.querySelector("#marginsRight").value),
-                },
-                scale:  parseFloat(actionElement.querySelector("#scale").value),
-                pageSize: actionElement.querySelector("#pageSize").value,
-              },
-              keepFold: keepFoldElement.checked,
-              mergeSubdocs: mergeSubdocsElement.checked,
-              watermark: watermarkElement.checked,
-              removeAssets: actionElement.querySelector("#removeAssets").checked,
-              rootId: "${id}",
-              rootTitle: response.data.name,
-              parentWindowId: ${currentWindowId},
-            })
+            const isPaged = actionElement.querySelector("#paged").checked;
+            if (!isPaged) {
+                const getPageSizeDimensions = () => {
+                    // https://github.com/electron/electron/blob/3df3a6a736b93e0d69fa3b0c403b33f201287780/lib/browser/api/web-contents.ts#L89-L101
+                    const pageSizes = {
+                        "A3": { width: 11.7, height: 16.54 },
+                        "A4": { width: 8.27, height: 11.7 },
+                        "A5": { width: 5.83, height: 8.27 },
+                        "Legal": { width: 8.5, height: 14 },
+                        "Letter": { width: 8.5, height: 11 },
+                        "Tabloid": { width: 11, height: 17 },
+                    };
+                    return pageSizes[actionElement.querySelector("#pageSize").value];
+                };
+                const previewHeight = Math.max(previewElement.scrollHeight / 96 - (parseFloat(document.querySelector("#marginsTop").value) || 0) - (parseFloat(document.querySelector("#marginsBottom").value) || 0), getPageSizeDimensions().height);
+                ipcRenderer.send("${Constants.SIYUAN_EXPORT_PDF}", buildExportConfig(actionElement.querySelector("#landscape").checked ? {
+                    height: getPageSizeDimensions().height,
+                    width: previewHeight,
+                } : {
+                    width: getPageSizeDimensions().width,
+                    height: previewHeight,
+                }));
+            } else {
+                ipcRenderer.send("${Constants.SIYUAN_EXPORT_PDF}", buildExportConfig());
+            }
             previewElement.classList.add("exporting");
             previewElement.style.zoom = "";
             previewElement.style.paddingTop = "6px";
@@ -588,7 +679,9 @@ const renderPDF = async (id: string) => {
             }
         })
     });
-</script></body></html>`;
+</script>
+${getSnippetJS()}
+</body></html>`;
     fetchPost("/api/export/exportTempContent", {content: html}, (response) => {
         ipcRenderer.send(Constants.SIYUAN_EXPORT_NEWWINDOW, response.data.url);
     });
@@ -642,13 +735,13 @@ const getExportPath = (option: IExportOptions, removeAssets?: boolean, mergeSubd
             }, exportResponse => {
                 if (option.type === "word") {
                     if (exportResponse.code === 1) {
-                        showMessage(exportResponse.msg, undefined, "error");
                         hideMessage(msgId);
+                        showMessage(exportResponse.msg, 0, "error");
                         return;
                     }
                     afterExport(exportResponse.data.path, msgId);
                 } else {
-                    onExport(exportResponse, savePath, option, msgId);
+                    onExport(exportResponse, savePath, "", option, msgId);
                 }
             });
         }
@@ -656,7 +749,7 @@ const getExportPath = (option: IExportOptions, removeAssets?: boolean, mergeSubd
 };
 /// #endif
 
-export const onExport = async (data: IWebSocketData, filePath: string, exportOption: IExportOptions, msgId?: string) => {
+export const onExport = async (data: IWebSocketData, filePath: string, servePath: string, exportOption: IExportOptions, msgId?: string) => {
     let themeName = window.siyuan.config.appearance.themeLight;
     let mode = 0;
     if (["html", "htmlmd"].includes(exportOption.type) && window.siyuan.config.appearance.mode === 1) {
@@ -664,25 +757,29 @@ export const onExport = async (data: IWebSocketData, filePath: string, exportOpt
         mode = 1;
     }
     const isDefault = (window.siyuan.config.appearance.mode === 1 && window.siyuan.config.appearance.themeDark === "midnight") || (window.siyuan.config.appearance.mode === 0 && window.siyuan.config.appearance.themeLight === "daylight");
-    const servePath = window.location.protocol + "//" + window.location.host;
     let themeStyle = "";
     if (!isDefault) {
         themeStyle = `<link rel="stylesheet" type="text/css" id="themeStyle" href="${servePath}appearance/themes/${themeName}/theme.css?${Constants.SIYUAN_VERSION}"/>`;
     }
-    let screenWidth = getScreenWidth();
-    const minWidthHtml = isInAndroid() || isInHarmony() ? `document.body.style.minWidth = "${screenWidth}px"` : "";
+    const screenWidth = getScreenWidth();
+    const isInMobile = isInAndroid() || isInHarmony() || isInIOS();
+    const mobileHtml = isInMobile ? {
+        js: `document.body.style.minWidth = "${screenWidth}px";`,
+        css: `@page { size: A4; margin: 10mm 0 10mm 0; background-color: var(--b3-theme-background); }
+.protyle-wysiwyg {padding: 0; margin: 0;}`
+    } : {js: "", css: ""};
     const html = `<!DOCTYPE html>
-<html lang="${window.siyuan.config.appearance.lang}" data-theme-mode="${getThemeMode()}" data-light-theme="${window.siyuan.config.appearance.themeLight}" data-dark-theme="${window.siyuan.config.appearance.themeDark}">
+<html lang="${window.siyuan.config.appearance.lang}" data-theme-mode="${isInMobile ? "light" : getThemeMode()}" data-light-theme="${window.siyuan.config.appearance.themeLight}" data-dark-theme="${window.siyuan.config.appearance.themeDark}">
 <head>
-    <base href="${servePath}/">
+    <base href="${servePath}">
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
     <meta name="mobile-web-app-capable" content="yes"/>
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <link rel="stylesheet" type="text/css" id="baseStyle" href="${servePath}/stage/build/export/base.css?v=${Constants.SIYUAN_VERSION}"/>
-    <link rel="stylesheet" type="text/css" id="themeDefaultStyle" href="${servePath}/appearance/themes/${themeName}/theme.css?v=${Constants.SIYUAN_VERSION}"/>
-    <script src="${servePath}/stage/protyle/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}"></script>
+    <link rel="stylesheet" type="text/css" id="baseStyle" href="${servePath}stage/build/export/base.css?v=${Constants.SIYUAN_VERSION}"/>
+    <link rel="stylesheet" type="text/css" id="themeDefaultStyle" href="${servePath}appearance/themes/${themeName}/theme.css?v=${Constants.SIYUAN_VERSION}"/>
+    <script src="${servePath}stage/protyle/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}"></script>
     ${themeStyle}
     <title>${data.data.name}</title>
     <!-- Exported by SiYuan v${Constants.SIYUAN_VERSION} -->
@@ -690,17 +787,18 @@ export const onExport = async (data: IWebSocketData, filePath: string, exportOpt
         body {font-family: var(--b3-font-family);background-color: var(--b3-theme-background);color: var(--b3-theme-on-background)}
         ${await setInlineStyle(false, servePath)}
         ${await getPluginStyle()}
+        ${mobileHtml.css}
     </style>
     ${getSnippetCSS()}
 </head>
 <body>
 <div class="${["htmlmd", "word"].includes(exportOption.type) ? "b3-typography" : "protyle-wysiwyg" + (window.siyuan.config.editor.displayBookmarkIcon ? " protyle-wysiwyg--attr" : "")}" 
-style="${isInAndroid() || isInHarmony() ? "margin: 0 16px;" : "max-width: 800px;margin: 0 auto;"}" id="preview">${data.data.content}</div>
-<script src="${servePath}/appearance/icons/${window.siyuan.config.appearance.icon}/icon.js?v=${Constants.SIYUAN_VERSION}"></script>
-<script src="${servePath}/stage/build/export/protyle-method.js?v=${Constants.SIYUAN_VERSION}"></script>
-<script src="${servePath}/stage/protyle/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}"></script>  
+style="max-width: 800px;margin: 0 auto;" id="preview">${data.data.content}</div>
+${getIconScript(servePath)}
+<script src="${servePath}stage/build/export/protyle-method.js?v=${Constants.SIYUAN_VERSION}"></script>
+<script src="${servePath}stage/protyle/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}"></script>  
 <script>
-    ${minWidthHtml};
+    ${mobileHtml.js}
     window.siyuan = {
       config: {
         appearance: { mode: ${mode}, codeBlockThemeDark: "${window.siyuan.config.appearance.codeBlockThemeDark}", codeBlockThemeLight: "${window.siyuan.config.appearance.codeBlockThemeLight}" },
@@ -728,15 +826,14 @@ style="${isInAndroid() || isInHarmony() ? "margin: 0 16px;" : "max-width: 800px;
     Protyle.plantumlRender(previewElement, "stage/protyle");
     document.querySelectorAll(".protyle-action__copy").forEach((item) => {
       item.addEventListener("click", (event) => {
-            let text = item.parentElement.nextElementSibling.textContent.trimEnd();
-            text = text.replace(/\u00A0/g, " "); // Replace non-breaking spaces with normal spaces when copying
-            navigator.clipboard.writeText(text);
+            navigator.clipboard.writeText(item.parentElement.nextElementSibling.textContent.trimEnd().replace(/\u00A0/g, " ").replace(/\u200D\`\`\`/g, "\`\`\`"));
             event.preventDefault();
             event.stopPropagation();
       })
     });
-</script></body></html>`;
-    // 移动端导出 pdf
+</script>
+${getSnippetJS()}</body></html>`;
+    // 移动端导出 pdf、浏览器导出 HTML
     if (typeof filePath === "undefined") {
         return html;
     }

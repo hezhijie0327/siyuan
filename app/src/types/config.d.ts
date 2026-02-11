@@ -52,9 +52,9 @@ declare namespace Config {
          */
         langs: ILang[];
         /**
-         * A list of the IP addresses of the devices on which the kernel resides
+         * A list of the kernel server addresses
          */
-        localIPs: string[];
+        serverAddrs: string[];
         /**
          * Log level
          */
@@ -260,6 +260,14 @@ declare namespace Config {
          * The version number of the theme currently in use
          */
         themeVer: string;
+        statusBar: IAppearanceStatusBar;
+    }
+
+    export interface IAppearanceStatusBar {
+        msgTaskDatabaseIndexCommitDisabled: boolean;
+        msgTaskHistoryDatabaseIndexCommitDisabled: boolean;
+        msgTaskAssetDatabaseIndexCommitDisabled: boolean;
+        msgTaskHistoryGenerateFileDisabled: boolean;
     }
 
     /**
@@ -277,9 +285,11 @@ declare namespace Config {
         | "he_IL"
         | "it_IT"
         | "ja_JP"
+        | "ko_KR"
         | "pl_PL"
         | "pt_BR"
         | "ru_RU"
+        | "tr_TR"
         | "zh_CN"
         | "zh_CHT";
 
@@ -341,6 +351,11 @@ declare namespace Config {
     export interface IEditor {
 
         /**
+         * Whether to allow to execute javascript in the SVG
+         */
+        allowSVGScript: boolean;
+
+        /**
          * Whether to allow to execute javascript in the HTML block
          */
         allowHTMLBLockScript: boolean;
@@ -362,6 +377,14 @@ declare namespace Config {
          * Whether the backlink contains children
          */
         backlinkContainChildren: boolean;
+        /**
+         * Backlink sort mode
+         */
+        backlinkSort: number;
+        /**
+         * Backmention sort mode
+         */
+        backmentionSort: number;
         /**
          * The maximum length of the dynamic anchor text for block references
          */
@@ -479,6 +502,10 @@ declare namespace Config {
          */
         spellcheck: boolean;
         /**
+         * Support spell check languages
+         */
+        spellcheckLanguages: string[];
+        /**
          * Whether to enable virtual references
          */
         virtualBlockRef: boolean;
@@ -526,10 +553,6 @@ declare namespace Config {
          */
         blockRefTextRight: string;
         /**
-         * The path of the template file used when exporting to Docx
-         */
-        docxTemplate: string;
-        /**
          * File annotation reference export mode
          * - `0`: File name - page number - anchor text
          * - `1`: Anchor text only
@@ -548,13 +571,29 @@ declare namespace Config {
          */
         markdownYFM: boolean;
         /**
+         * Whether to remove the asset ID when exporting to Markdown
+         */
+        removeAssetsID: boolean;
+        /**
          * Whether to export the inline memo
          */
         inlineMemo: boolean;
         /**
+         * Whether to include sub-documents when exporting
+         */
+        includeSubDocs: boolean;
+        /**
+         * Whether to include related documents when exporting
+         */
+        includeRelatedDocs: boolean;
+        /**
          * Pandoc executable file path
          */
         pandocBin: string;
+        /**
+         * Pandoc parameters
+         */
+        pandocParams: string;
         /**
          * Whether the beginning of the paragraph is empty two spaces.
          * Insert two full-width spaces `U+3000` at the beginning of the paragraph.
@@ -654,6 +693,14 @@ declare namespace Config {
          * The .sy and database .json files larger than this value will prompt a warning (unit: MB)
          */
         largeFileWarningSize: number;
+        /**
+         * Whether to create new documents at the top of the document tree
+         */
+        createDocAtTop: boolean;
+        /**
+         * The maximum number of recent documents listed
+         */
+        recentDocsMaxListCount: number;
     }
 
     /**
@@ -783,6 +830,10 @@ declare namespace Config {
          * Display quote block
          */
         blockquote: boolean;
+        /**
+         * Display callout
+         */
+        callout: boolean;
         /**
          * Display code block
          */
@@ -1000,29 +1051,35 @@ declare namespace Config {
      * SiYuan general shortcut keys
      */
     export interface IKeymapGeneral extends IKeys {
-        addToDatabase: IKey;
-        backlinks: IKey;
-        bookmark: IKey;
-        closeAll: IKey;
-        closeLeft: IKey;
-        closeOthers: IKey;
-        closeRight: IKey;
-        closeTab: IKey;
-        closeUnmodified: IKey;
+        mainMenu: IKey;
         commandPanel: IKey;
-        config: IKey;
-        dailyNote: IKey;
-        dataHistory: IKey;
         editReadonly: IKey;
-        enter: IKey;
+        syncNow: IKey;
         enterBack: IKey;
-        fileTree: IKey;
-        globalGraph: IKey;
-        globalSearch: IKey;
-        goBack: IKey;
+        enter: IKey;
         goForward: IKey;
-        goToEditTabNext: IKey;
-        goToEditTabPrev: IKey;
+        goBack: IKey;
+        newFile: IKey;
+        search: IKey;
+        globalSearch: IKey;
+        stickSearch: IKey;
+        replace: IKey;
+        closeTab: IKey;
+        fileTree: IKey;
+        outline: IKey;
+        bookmark: IKey;
+        tag: IKey;
+        dailyNote: IKey;
+        inbox: IKey;
+        backlinks: IKey;
+        graphView: IKey;
+        globalGraph: IKey;
+        riffCard: IKey;
+        config: IKey;
+        dataHistory: IKey;
+        toggleWin: IKey;
+        lockScreen: IKey;
+        recentDocs: IKey;
         goToTab1: IKey;
         goToTab2: IKey;
         goToTab3: IKey;
@@ -1034,28 +1091,25 @@ declare namespace Config {
         goToTab9: IKey;
         goToTabNext: IKey;
         goToTabPrev: IKey;
-        graphView: IKey;
-        inbox: IKey;
-        lockScreen: IKey;
-        mainMenu: IKey;
+        goToEditTabNext: IKey;
+        goToEditTabPrev: IKey;
+        recentClosed: IKey;
         move: IKey;
-        newFile: IKey;
-        outline: IKey;
-        recentDocs: IKey;
-        replace: IKey;
-        riffCard: IKey;
-        search: IKey;
         selectOpen1: IKey;
+        toggleDock: IKey;
         splitLR: IKey;
-        splitMoveB: IKey;
         splitMoveR: IKey;
         splitTB: IKey;
-        stickSearch: IKey;
-        syncNow: IKey;
+        splitMoveB: IKey;
+        closeOthers: IKey;
+        closeAll: IKey;
+        closeUnmodified: IKey;
+        closeLeft: IKey;
+        closeRight: IKey;
         tabToWindow: IKey;
-        tag: IKey;
-        toggleDock: IKey;
-        toggleWin: IKey;
+        addToDatabase: IKey;
+        unsplit: IKey;
+        unsplitAll: IKey;
     }
 
     /**
@@ -1193,6 +1247,10 @@ declare namespace Config {
          * Whether to search quote blocks
          */
         blockquote: boolean;
+        /**
+         * Whether to search callout
+         */
+        callout: boolean;
         /**
          * Whether to distinguish between uppercase and lowercase letters when searching
          */
@@ -1565,6 +1623,10 @@ declare namespace Config {
          * Whether to enable network serve (whether to allow connections from other devices)
          */
         networkServe: boolean;
+        /**
+         * Whether to enable HTTPS for network serve (TLS encryption)
+         */
+        networkServeTLS: boolean;
         /**
          * The operating system name determined at compile time (obtained using the command `go tool
          * dist list`)
@@ -2279,6 +2341,11 @@ declare namespace Config {
          * @default false
          */
         blockquote: boolean;
+        /**
+         * Search results contain callout blocks
+         * @default false
+         */
+        callout: boolean;
         /**
          * Search results contain code blocks
          * @default false

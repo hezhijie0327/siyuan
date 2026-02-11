@@ -69,8 +69,11 @@ export class Toolbar {
         protyle.app.plugins.forEach(item => {
             const pluginToolbar = item.updateProtyleToolbar(options.toolbar);
             pluginToolbar.forEach(toolbarItem => {
-                if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|").includes(toolbarItem.name) || !toolbarItem.hotkey) {
+                if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|").includes(toolbarItem.name)) {
                     return;
+                }
+                if (typeof toolbarItem.hotkey !== "string") {
+                    toolbarItem.hotkey = "";
                 }
                 if (window.siyuan.config.keymap.plugin && window.siyuan.config.keymap.plugin[item.name] && window.siyuan.config.keymap.plugin[item.name][toolbarItem.name]) {
                     toolbarItem.hotkey = window.siyuan.config.keymap.plugin[item.name][toolbarItem.name].custom;
@@ -90,8 +93,11 @@ export class Toolbar {
         protyle.app.plugins.forEach(item => {
             const pluginToolbar = item.updateProtyleToolbar(protyle.options.toolbar);
             pluginToolbar.forEach(toolbarItem => {
-                if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|").includes(toolbarItem.name) || !toolbarItem.hotkey) {
+                if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|").includes(toolbarItem.name)) {
                     return;
+                }
+                if (typeof toolbarItem.hotkey !== "string") {
+                    toolbarItem.hotkey = "";
                 }
                 if (window.siyuan.config.keymap.plugin && window.siyuan.config.keymap.plugin[item.name] && window.siyuan.config.keymap.plugin[item.name][toolbarItem.name]) {
                     toolbarItem.hotkey = window.siyuan.config.keymap.plugin[item.name][toolbarItem.name].custom;
@@ -771,7 +777,7 @@ export class Toolbar {
                             currentNode.textContent = currentNode.textContent.substring(1);
                         }
                         if (previousElement.textContent.endsWith(Constants.ZWSP)) {
-                            previousElement.textContent = previousElement.textContent.substring(0, previousElement.textContent.length - 2);
+                            previousElement.textContent = previousElement.textContent.substring(0, previousElement.textContent.length - 1);
                         }
                     } else {
                         const previousType = previousElement ? (previousElement.getAttribute("data-type") || "").split(" ") : [];
@@ -854,7 +860,7 @@ export class Toolbar {
         if (!nodeElement) {
             return;
         }
-        hideElements(["hint"], protyle);
+        hideElements(["hint", "select"], protyle);
         window.siyuan.menus.menu.remove();
         const id = nodeElement.getAttribute("data-node-id");
         const types = (renderElement.getAttribute("data-type") || "").split(" ");
@@ -1097,8 +1103,19 @@ export class Toolbar {
             }
         });
         this.subElementCloseCB = () => {
+            protyle.wysiwyg.element.focus({ preventScroll: true});
             if (!renderElement.parentElement || protyle.disabled ||
                 (oldTextValue === textElement.value && textElement.value)) {
+                if (renderElement.tagName === "SPAN") {
+                    if (renderElement.parentElement) {
+                        this.range.setStartAfter(renderElement);
+                        this.range.collapse(true);
+                        focusByRange(this.range);
+                    }
+                } else {
+                    focusBlock(renderElement);
+                    renderElement.classList.add("protyle-wysiwyg--select");
+                }
                 return;
             }
             let inlineLastNode: Element;
@@ -1685,6 +1702,7 @@ ${item.name}
                 updateTransaction(protyle, nodeElement.getAttribute("data-node-id"), nodeElement.outerHTML, oldHTML);
                 this.subElement.classList.add("fn__none");
             } else if (action === "paste") {
+                focusByRange(getEditorRange(nodeElement));
                 if (document.queryCommandSupported("paste")) {
                     document.execCommand("paste");
                 } else {
@@ -1708,6 +1726,7 @@ ${item.name}
                 pasteAsPlainText(protyle);
                 this.subElement.classList.add("fn__none");
             } else if (action === "pasteEscaped") {
+                focusByRange(getEditorRange(nodeElement));
                 pasteEscaped(protyle, nodeElement);
                 this.subElement.classList.add("fn__none");
             } else if (action === "back") {

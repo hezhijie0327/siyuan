@@ -1,9 +1,10 @@
 import {popSearch} from "./search";
 import {initAppearance} from "../settings/appearance";
-import {initAssets} from "../settings/assets";
+import {initConfigAssets} from "../settings/assets";
 import {closePanel} from "../util/closePanel";
 import {mountHelp, newDailyNote, newNotebook} from "../../util/mount";
 import {repos} from "../../config/repos";
+import {publish} from "../../config/publish";
 import {exitSiYuan, lockScreen, processSync} from "../../dialog/processSystem";
 import {openHistory} from "../../history/history";
 import {syncGuide} from "../../sync/syncGuide";
@@ -30,6 +31,7 @@ import {afterLoadPlugin} from "../../plugin/loader";
 import {commandPanel} from "../../boot/globalEvent/command/panel";
 import {openTopBarMenu} from "../../plugin/openTopBarMenu";
 import {initFileTree} from "../settings/fileTree";
+import {initExport} from "../settings/export";
 
 export const popMenu = () => {
     activeBlur();
@@ -102,11 +104,17 @@ export const initRightMenu = (app: App) => {
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuAssets">
         <svg class="b3-menu__icon"><use xlink:href="#iconImage"></use></svg><span class="b3-menu__label">${window.siyuan.languages.assets}</span>
     </div>
+    <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuExport">
+        <svg class="b3-menu__icon"><use xlink:href="#iconUpload"></use></svg><span class="b3-menu__label">${window.siyuan.languages.export}</span>
+    </div>
     <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuAppearance">
         <svg class="b3-menu__icon"><use xlink:href="#iconTheme"></use></svg><span class="b3-menu__label">${window.siyuan.languages.appearance}</span>
     </div>
     <div id="menuSync" class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}">
         <svg class="b3-menu__icon"><use xlink:href="#iconCloud"></use></svg><span class="b3-menu__label">${window.siyuan.languages.cloud}</span>
+    </div>
+    <div class="b3-menu__item${window.siyuan.config.readonly ? " fn__none" : ""}" id="menuPublish">
+        <svg class="b3-menu__icon"><use xlink:href="#iconLanguage"></use></svg><span class="b3-menu__label">${window.siyuan.languages.publish}</span>
     </div>
     <div class="b3-menu__item" id="menuAbout">
         <svg class="b3-menu__icon"><use xlink:href="#iconInfo"></use></svg><span class="b3-menu__label">${window.siyuan.languages.about}</span>
@@ -158,7 +166,12 @@ export const initRightMenu = (app: App) => {
                 event.stopPropagation();
                 break;
             } else if (target.id === "menuAssets") {
-                initAssets();
+                initConfigAssets(app);
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            } else if (target.id === "menuExport") {
+                initExport();
                 event.preventDefault();
                 event.stopPropagation();
                 break;
@@ -242,6 +255,19 @@ export const initRightMenu = (app: App) => {
                     bindEvent(modelMainElement: HTMLElement) {
                         repos.element = modelMainElement;
                         repos.bindEvent();
+                    }
+                });
+                event.preventDefault();
+                event.stopPropagation();
+                break;
+            } else if (target.id === "menuPublish") {
+                openModel({
+                    title: window.siyuan.languages.publish,
+                    icon: "iconLanguage",
+                    html: publish.genHTML(),
+                    bindEvent(modelMainElement: HTMLElement) {
+                        publish.element = modelMainElement;
+                        publish.bindEvent();
                     }
                 });
                 event.preventDefault();

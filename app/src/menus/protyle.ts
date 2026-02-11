@@ -61,8 +61,9 @@ import {popSearch} from "../mobile/menu/search";
 import {showMessage} from "../dialog/message";
 import {img3115} from "../boot/compatibleVersion";
 import {hideTooltip} from "../dialog/tooltip";
-import {clearSelect} from "../protyle/util/clearSelect";
+import {clearSelect} from "../protyle/util/clear";
 import {scrollCenter} from "../util/highlightById";
+import {base64ToURL} from "../util/image";
 
 const renderAssetList = (element: Element, k: string, position: IPosition, exts: string[] = []) => {
     fetchPost("/api/search/searchAsset", {
@@ -825,6 +826,7 @@ export const contentMenu = (protyle: IProtyle, nodeElement: Element) => {
             icon: "iconPaste",
             accelerator: "⌘V",
             async click() {
+                focusByRange(getEditorRange(nodeElement));
                 if (document.queryCommandSupported("paste")) {
                     document.execCommand("paste");
                 } else {
@@ -850,6 +852,7 @@ export const contentMenu = (protyle: IProtyle, nodeElement: Element) => {
             id: "pasteEscaped",
             label: window.siyuan.languages.pasteEscaped,
             click() {
+                focusByRange(getEditorRange(nodeElement));
                 pasteEscaped(protyle, nodeElement);
             }
         }).element);
@@ -1020,7 +1023,7 @@ export const zoomOut = (options: {
                 }
                 focusBlock(showElement);
                 const resizeObserver = new ResizeObserver(() => {
-                    scrollCenter(options.protyle, focusElement, true);
+                    scrollCenter(options.protyle, focusElement, "start");
                 });
                 resizeObserver.observe(options.protyle.wysiwyg.element);
                 setTimeout(() => {
@@ -1122,12 +1125,12 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
                     const value = (event.target as HTMLInputElement).value.replace(/\n|\r\n|\r|\u2028|\u2029/g, "").trim();
                     imgElement.setAttribute("src", value);
                     imgElement.setAttribute("data-src", value);
-                    if (value.startsWith("assets/")) {
-                        const imgNetElement = assetElement.querySelector(".img__net");
+                    const imgNetElement = assetElement.querySelector(".img__net");
+                    if (value.startsWith("assets/") || value.startsWith("data:image/")) {
                         if (imgNetElement) {
                             imgNetElement.remove();
                         }
-                    } else if (window.siyuan.config.editor.displayNetImgMark) {
+                    } else if (window.siyuan.config.editor.displayNetImgMark && !imgNetElement) {
                         assetElement.querySelector(".protyle-action__drag").insertAdjacentHTML("afterend", '<span class="img__net"><svg><use xlink:href="#iconLanguage"></use></svg></span>');
                     }
                 });
@@ -1409,7 +1412,15 @@ export const imgMenu = (protyle: IProtyle, range: Range, assetElement: HTMLEleme
         } else {
             textElements[0].select();
         }
-        window.siyuan.menus.menu.removeCB = () => {
+        window.siyuan.menus.menu.removeCB = async () => {
+            const newSrc = textElements[0].value;
+            if (src !== newSrc && newSrc.startsWith("data:image/")) {
+                const base64Src = await base64ToURL([newSrc]);
+                imgElement.setAttribute("src", base64Src[0]);
+                imgElement.setAttribute("data-src", base64Src[0]);
+                assetElement.querySelector(".img__net")?.remove();
+            }
+
             const ocrElement = window.siyuan.menus.menu.element.querySelector('[data-type="ocr"]') as HTMLTextAreaElement;
             if (ocrElement && ocrElement.dataset.ocrText !== ocrElement.value) {
                 fetchPost("/api/asset/setImageOCRText", {
@@ -2426,7 +2437,9 @@ export const setFoldById = (data: {
 
 export const setFold = (protyle: IProtyle, nodeElement: Element, isOpen?: boolean,
                         isRemove?: boolean, addLoading = true, getOperations = false) => {
-    if (nodeElement.getAttribute("data-type") === "NodeListItem" && nodeElement.childElementCount < 4) {
+    if (nodeElement.getAttribute("data-type") === "NodeListItem" && nodeElement.childElementCount < 4 &&
+        // 该情况需要强制展开 https://github.com/siyuan-note/siyuan/issues/12327
+        !isOpen) {
         // 没有子列表或多个块的列表项不进行折叠
         return {fold: -1};
     }
@@ -2458,6 +2471,7 @@ export const setFold = (protyle: IProtyle, nodeElement: Element, isOpen?: boolea
             }
         }
         clearSelect(["img", "av"], nodeElement);
+        scrollCenter(protyle, nodeElement);
     }
     const id = nodeElement.getAttribute("data-node-id");
     const doOperations: IOperation[] = [];
