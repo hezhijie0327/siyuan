@@ -12,7 +12,7 @@ import {
     setFirstNodeRange,
     setLastNodeRange
 } from "../util/selection";
-import {hasClosestBlock, hasClosestByAttribute, hasClosestByClassName} from "../util/hasClosest";
+import {hasClosestBlock, hasClosestByAttribute, hasClosestByClassName, hasClosestByTag} from "../util/hasClosest";
 import {Link} from "./Link";
 import {setPosition} from "../../util/setPosition";
 import {transaction, updateTransaction} from "../wysiwyg/transaction";
@@ -114,7 +114,8 @@ export class Toolbar {
     public render(protyle: IProtyle, range: Range, event?: KeyboardEvent) {
         this.range = range;
         let nodeElement = hasClosestBlock(range.startContainer);
-        if (isMobile() || !nodeElement || protyle.disabled || nodeElement.classList.contains("av")) {
+        if (isMobile() || !nodeElement || protyle.disabled || nodeElement.classList.contains("av") ||
+            hasClosestByTag(range.startContainer, "CAPTION")) {
             this.element.classList.add("fn__none");
             return;
         }
@@ -1103,7 +1104,6 @@ export class Toolbar {
             }
         });
         this.subElementCloseCB = () => {
-            protyle.wysiwyg.element.focus({ preventScroll: true});
             if (!renderElement.parentElement || protyle.disabled ||
                 (oldTextValue === textElement.value && textElement.value)) {
                 if (renderElement.tagName === "SPAN") {
@@ -1116,6 +1116,7 @@ export class Toolbar {
                     focusBlock(renderElement);
                     renderElement.classList.add("protyle-wysiwyg--select");
                 }
+                protyle.wysiwyg.element.focus({preventScroll: true});
                 return;
             }
             let inlineLastNode: Element;
@@ -1221,6 +1222,7 @@ export class Toolbar {
                 }
             }
             updateTransaction(protyle, id, nodeElement.outerHTML, html);
+            protyle.wysiwyg.element.focus({preventScroll: true});
         };
         this.subElement.style.zIndex = (++window.siyuan.zIndex).toString();
         this.subElement.classList.remove("fn__none");
