@@ -10,7 +10,7 @@ import {openNewWindow, openNewWindowById} from "../window/openNewWindow";
 import {Tab} from "../layout/Tab";
 /// #endif
 import {updateHotkeyTip} from "../protyle/util/compatibility";
-import * as platformUtils from "../protyle/util/compatibility";
+import * as platformUtils from "./platformUtils";
 import {App} from "../index";
 import {Constants} from "../constants";
 import {Setting} from "./Setting";
@@ -21,7 +21,7 @@ import {lockScreen, exitSiYuan} from "../dialog/processSystem";
 import {Model} from "../layout/Model";
 import {getActiveTab, getDockByType} from "../layout/tabUtil";
 /// #if !MOBILE
-import {getAllModels} from "../layout/getAll";
+import {getAllModels, getAllTabs} from "../layout/getAll";
 /// #endif
 import {getAllEditor} from "../layout/getAll";
 import {openSetting} from "../config";
@@ -32,6 +32,7 @@ import {saveScroll} from "../protyle/scroll/saveScroll";
 import {hasClosestByClassName} from "../protyle/util/hasClosest";
 import {Files} from "../layout/dock/Files";
 import {ProtyleMethod} from "./ProtyleMethod";
+import {openEmojiPanel} from "../emoji";
 
 let openTab;
 let openWindow;
@@ -48,16 +49,27 @@ openWindow = (options: {
     height?: number,
     width?: number,
     tab?: Tab,
+    alwaysOnTop?: boolean,
     doc?: {
         id: string,     // 块 id
     },
 }) => {
     if (options.doc && options.doc.id) {
-        openNewWindowById(options.doc.id, {position: options.position, width: options.width, height: options.height});
+        openNewWindowById(options.doc.id, {
+            alwaysOnTop: options.alwaysOnTop,
+            position: options.position,
+            width: options.width,
+            height: options.height
+        });
         return;
     }
     if (options.tab) {
-        openNewWindow(options.tab, {position: options.position, width: options.width, height: options.height});
+        openNewWindow(options.tab, {
+            alwaysOnTop: options.alwaysOnTop,
+            position: options.position,
+            width: options.width,
+            height: options.height
+        });
         return;
     }
 };
@@ -68,6 +80,7 @@ openTab = (options: {
         id: string,     // 块 id
         action?: TProtyleAction [] // cb-get-all：获取所有内容；cb-get-focus：打开后光标定位在 id 所在的块；cb-get-hl: 打开后 id 块高亮
         zoomIn?: boolean // 是否缩放
+        mode?: TEditorMode  // 文档打开模式，默认 "wysiwyg"
     },
     pdf?: {
         path: string,
@@ -114,7 +127,8 @@ openTab = (options: {
             id: options.doc.id,
             action: options.doc.action,
             zoomIn: options.doc.zoomIn,
-            scrollPosition: "start"
+            scrollPosition: "start",
+            mode: options.doc.mode,
         });
     }
     if (options.asset) {
@@ -305,6 +319,24 @@ export const expandDocTree = async (options: {
     file.getLeaf(liElement, notebookId);
 };
 
+const openEmoji = (options: {
+    position: IPosition,
+    selectedCB?: (emoji: string) => void,
+    dynamicIconURL?: string
+    hideDynamicIcon?: boolean
+    hideCustomIcon?: boolean
+}) => {
+    let dynamicImgElement: HTMLImageElement;
+    if (options.dynamicIconURL) {
+        dynamicImgElement = document.createElement("img");
+        dynamicImgElement.src = options.dynamicIconURL;
+    }
+    openEmojiPanel("", "av", options.position, options.selectedCB, dynamicImgElement, {
+        dynamic: options.hideDynamicIcon,
+        custom: options.hideCustomIcon
+    });
+};
+
 export const API = {
     adaptHotkey: updateHotkeyTip,
     confirm: confirmDialog,
@@ -332,6 +364,7 @@ export const API = {
     /// #if !MOBILE
     getActiveTab,
     getAllModels,
+    getAllTabs,
     /// #endif
     getActiveEditor,
     platformUtils,
@@ -339,5 +372,6 @@ export const API = {
     openAttributePanel,
     saveLayout,
     globalCommand,
-    expandDocTree
+    expandDocTree,
+    openEmoji
 };

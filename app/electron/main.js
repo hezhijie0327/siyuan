@@ -18,11 +18,13 @@ const {
     net,
     app,
     BrowserWindow,
+    Notification,
     shell,
     Menu,
     MenuItem,
     screen,
     ipcMain,
+    clipboard,
     globalShortcut,
     Tray,
     dialog,
@@ -46,20 +48,55 @@ let firstOpen = false;
 let workspaces = []; // workspaceDir, id, browserWindow, tray, hideShortcut
 let kernelPort = 6806;
 let resetWindowStateOnRestart = false;
+let openAsHidden = false;
+const isOpenAsHidden = function () {
+    return 1 === workspaces.length && openAsHidden;
+};
 
 remote.initialize();
 
-app.setPath("userData", app.getPath("userData") + "-Electron"); // `~/.config` 下 Electron 相关文件夹名称改为 `SiYuan-Electron` https://github.com/siyuan-note/siyuan/issues/3349
-fs.rmSync(app.getPath("appData") + "/" + app.name, {recursive: true}); // 删除自动创建的应用目录 https://github.com/siyuan-note/siyuan/issues/13150
+// Electron 相关文件夹名称改为 `SiYuan-Electron` https://github.com/siyuan-note/siyuan/issues/3349
+// getPath("userData") 会创建空的 SiYuan 目录，改为 app.getPath("appData")
+app.setPath("userData", path.join(app.getPath("appData"), app.getName() + "-Electron"));
 
 if (process.platform === "win32") {
-    // Windows 需要设置 AppUserModelId 才能正确显示应用名称 https://github.com/siyuan-note/siyuan/issues/17022
-    app.setAppUserModelId(app.name);
+    // Windows 需要设置 AppUserModelId 才能正确显示应用名称和应用图标 https://github.com/siyuan-note/siyuan/issues/17022
+    app.setAppUserModelId("org.b3log.siyuan");
 }
 
 if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
+}
+
+app.setAsDefaultProtocolClient("siyuan");
+
+app.commandLine.appendSwitch("disable-web-security");
+app.commandLine.appendSwitch("auto-detect", "false");
+app.commandLine.appendSwitch("no-proxy-server");
+app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
+app.commandLine.appendSwitch("xdg-portal-required-version", "4");
+
+// Support set Chromium command line arguments on the desktop https://github.com/siyuan-note/siyuan/issues/9696
+writeLog("app is packaged [" + app.isPackaged + "], command line args [" + process.argv.join(", ") + "]");
+let argStart = 1;
+if (!app.isPackaged) {
+    argStart = 2;
+}
+
+for (let i = argStart; i < process.argv.length; i++) {
+    let arg = process.argv[i];
+    if (arg.startsWith("--workspace=") || arg.startsWith("--openAsHidden") || arg.startsWith("--port=") || arg.startsWith("siyuan://")) {
+        // 跳过内置参数
+        if (arg.startsWith("--openAsHidden")) {
+            openAsHidden = true;
+            writeLog("open as hidden");
+        }
+        continue;
+    }
+
+    app.commandLine.appendSwitch(arg);
+    writeLog("command line switch [" + arg + "]");
 }
 
 try {
@@ -79,17 +116,9 @@ const windowNavigate = (currentWindow, windowType) => {
         if (url.startsWith(localServer)) {
             try {
                 const pathname = new URL(url).pathname;
-                // 所有窗口都允许认证页面
-                if (pathname === "/check-auth" || pathname === "/") {
-                    return;
-                }
-                if (pathname === "/stage/build/app/" && windowType === "app") {
-                    return;
-                }
-                if (pathname === "/stage/build/app/window.html" && windowType === "window") {
-                    return;
-                }
-                if (pathname.startsWith("/export/temp/") && windowType === "export") {
+                if (windowType === "app" && ["/", "/stage/build/app/", "/check-auth"].includes(pathname) ||
+                    (windowType === "window" && ["/stage/build/app/window.html", "/check-auth"].includes(pathname)) ||
+                    (windowType === "export" && pathname.startsWith("/export/temp/"))) {
                     return;
                 }
             } catch (e) {
@@ -174,6 +203,7 @@ const resolveAppLanguage = (languageTags) => {
         "pl": "pl_PL",
         "pt": "pt_BR",
         "ru": "ru_RU",
+        "sk": "sk_SK",
         "tr": "tr_TR"
     };
 
@@ -289,33 +319,6 @@ const showErrorWindow = (titleZh, titleEn, content, emoji = "⚠️") => {
     });
     errWindow.show();
     return errWindow.id;
-};
-
-const writeLog = (out) => {
-    console.log(out);
-    const logFile = path.join(confDir, "app.log");
-    let log = "";
-    const maxLogLines = 1024;
-    try {
-        if (fs.existsSync(logFile)) {
-            log = fs.readFileSync(logFile).toString();
-            let lines = log.split("\n");
-            if (maxLogLines < lines.length) {
-                log = lines.slice(maxLogLines / 2, maxLogLines).join("\n") + "\n";
-            }
-        }
-        out = out.toString();
-        out = new Date().toISOString().replace(/T/, " ").replace(/\..+/, "") + " " + out;
-        log += out + "\n";
-        fs.writeFileSync(logFile, log);
-    } catch (e) {
-        console.error(e);
-    }
-};
-
-let openAsHidden = false;
-const isOpenAsHidden = function () {
-    return 1 === workspaces.length && openAsHidden;
 };
 
 const initMainWindow = () => {
@@ -485,23 +488,6 @@ const initMainWindow = () => {
         currentWindow.webContents.openDevTools({mode: "bottom"});
     }
 
-    // 主界面事件监听
-    currentWindow.once("ready-to-show", () => {
-        if (isOpenAsHidden()) {
-            currentWindow.minimize();
-        } else {
-            currentWindow.show();
-            if (windowState.isMaximized) {
-                currentWindow.maximize();
-            } else {
-                currentWindow.unmaximize();
-            }
-        }
-        if (bootWindow && !bootWindow.isDestroyed()) {
-            bootWindow.destroy();
-        }
-    });
-
     // 菜单
     const productName = "SiYuan";
     const template = [{
@@ -532,6 +518,21 @@ const initMainWindow = () => {
     });
     workspaces.push({
         browserWindow: currentWindow,
+    });
+    ipcMain.once("siyuan-ready-to-show", () => {
+        if (isOpenAsHidden()) {
+            currentWindow.minimize();
+        } else {
+            currentWindow.show();
+            if (windowState.isMaximized) {
+                currentWindow.maximize();
+            } else {
+                currentWindow.unmaximize();
+            }
+        }
+        if (bootWindow && !bootWindow.isDestroyed()) {
+            bootWindow.destroy();
+        }
     });
 };
 
@@ -724,36 +725,6 @@ const initKernel = (workspace, port, lang) => {
     });
 };
 
-app.setAsDefaultProtocolClient("siyuan");
-
-app.commandLine.appendSwitch("disable-web-security");
-app.commandLine.appendSwitch("auto-detect", "false");
-app.commandLine.appendSwitch("no-proxy-server");
-app.commandLine.appendSwitch("enable-features", "PlatformHEVCDecoderSupport");
-app.commandLine.appendSwitch("xdg-portal-required-version", "4");
-
-// Support set Chromium command line arguments on the desktop https://github.com/siyuan-note/siyuan/issues/9696
-writeLog("app is packaged [" + app.isPackaged + "], command line args [" + process.argv.join(", ") + "]");
-let argStart = 1;
-if (!app.isPackaged) {
-    argStart = 2;
-}
-
-for (let i = argStart; i < process.argv.length; i++) {
-    let arg = process.argv[i];
-    if (arg.startsWith("--workspace=") || arg.startsWith("--openAsHidden") || arg.startsWith("--port=") || arg.startsWith("siyuan://")) {
-        // 跳过内置参数
-        if (arg.startsWith("--openAsHidden")) {
-            openAsHidden = true;
-            writeLog("open as hidden");
-        }
-        continue;
-    }
-
-    app.commandLine.appendSwitch(arg);
-    writeLog("command line switch [" + arg + "]");
-}
-
 app.whenReady().then(() => {
     const resetTrayMenu = (tray, lang, mainWindow) => {
         if (!mainWindow || mainWindow.isDestroyed()) {
@@ -859,11 +830,21 @@ app.whenReady().then(() => {
         app.exit();
     });
     ipcMain.handle("siyuan-get", (event, data) => {
+        if (data.cmd === "clipboardRead") {
+            return clipboard.read(data.format);
+        }
         if (data.cmd === "showOpenDialog") {
             return dialog.showOpenDialog(data);
         }
         if (data.cmd === "getContentsId") {
             return event.sender.id;
+        }
+        if (data.cmd === "isAlwaysOnTop") {
+            const wnd = getWindowByContentId(event.sender.id);
+            if (!wnd) {
+                return false;
+            }
+            return wnd.isAlwaysOnTop();
         }
         if (data.cmd === "availableSpellCheckerLanguages") {
             return event.sender.session.availableSpellCheckerLanguages;
@@ -968,6 +949,13 @@ app.whenReady().then(() => {
         switch (cmd) {
             case "showItemInFolder":
                 shell.showItemInFolder(data.filePath);
+                break;
+            case "notification":
+                new Notification({
+                    title: data.title,
+                    body: data.body,
+                    timeoutType: data.timeoutType,
+                }).show();
                 break;
             case "setSpellCheckerLanguages":
                 BrowserWindow.getAllWindows().forEach(item => {
@@ -1173,6 +1161,7 @@ app.whenReady().then(() => {
         } else {
             win.center();
         }
+        win.setAlwaysOnTop(data.alwaysOnTop);
         win.webContents.userAgent = "SiYuan/" + appVer + " https://b3log.org/siyuan Electron " + win.webContents.userAgent;
         win.webContents.session.setSpellCheckerLanguages(["en-US"]);
         win.loadURL(data.url);
@@ -1320,7 +1309,6 @@ app.whenReady().then(() => {
             args: data.openAsHidden ? ["--openAsHidden"] : ""
         });
     });
-
     if (firstOpen) {
         const firstOpenWindow = new BrowserWindow({
             width: Math.floor(screen.getPrimaryDisplay().size.width * 0.6),
@@ -1536,3 +1524,25 @@ app.on("before-quit", (event) => {
         }
     });
 });
+
+function writeLog(out) {
+    console.log(out);
+    const logFile = path.join(confDir, "app.log");
+    let log = "";
+    const maxLogLines = 1024;
+    try {
+        if (fs.existsSync(logFile)) {
+            log = fs.readFileSync(logFile).toString();
+            let lines = log.split("\n");
+            if (maxLogLines < lines.length) {
+                log = lines.slice(maxLogLines / 2, maxLogLines).join("\n") + "\n";
+            }
+        }
+        out = out.toString();
+        out = new Date().toISOString().replace(/T/, " ").replace(/\..+/, "") + " " + out;
+        log += out + "\n";
+        fs.writeFileSync(logFile, log);
+    } catch (e) {
+        console.error(e);
+    }
+}

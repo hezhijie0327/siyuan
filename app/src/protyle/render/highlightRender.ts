@@ -33,13 +33,14 @@ export const highlightRender = (element: Element, cdn = Constants.PROTYLE_CDN, z
     addScript(`${cdn}/js/highlight.js/highlight.min.js?v=11.11.1`, "protyleHljsScript").then(() => {
         addScript(`${cdn}/js/highlight.js/third-languages.js?v=2.0.1`, "protyleHljsThirdScript").then(() => {
             codeElements.forEach((block: HTMLElement) => {
+                if (block.getAttribute("data-render") === "true") {
+                    return;
+                }
+                block.setAttribute("data-render", "true");
                 const iconElements = block.parentElement.querySelectorAll(".protyle-icon");
                 if (iconElements.length === 2) {
                     iconElements[0].setAttribute("aria-label", window.siyuan.languages.copy);
                     iconElements[1].setAttribute("aria-label", window.siyuan.languages.more);
-                }
-                if (block.getAttribute("data-render") === "true") {
-                    return;
                 }
                 const wbrElement = block.querySelector("wbr");
                 let startIndex = 0;
@@ -69,7 +70,6 @@ export const highlightRender = (element: Element, cdn = Constants.PROTYLE_CDN, z
                     language = "plaintext";
                 }
                 block.classList.add("hljs");
-                block.setAttribute("data-render", "true");
                 const autoEnter = block.parentElement.getAttribute("linewrap");
                 const ligatures = block.parentElement.getAttribute("ligatures");
                 const lineNumber = block.parentElement.getAttribute("linenumber");
@@ -141,11 +141,16 @@ export const lineNumberRender = (block: HTMLElement, zoom = 1) => {
         const lineNumberTemp = document.createElement("div");
         lineNumberTemp.className = "hljs";
         // 不能使用 codeElement.clientWidth，被忽略小数点导致宽度不一致
+        // 需要手动复制字体样式 https://ld246.com/article/1762527296449
         lineNumberTemp.setAttribute("style", `padding-left:${codeElement.style.paddingLeft};
 width: ${codeElement.getBoundingClientRect().width / zoom}px;
 white-space:${codeElementStyle.whiteSpace};
 word-break:${codeElementStyle.wordBreak};
 font-variant-ligatures:${codeElementStyle.fontVariantLigatures};
+font-family:${codeElementStyle.fontFamily};
+font-size:${codeElementStyle.fontSize};
+line-height:${codeElementStyle.lineHeight};
+font-weight:${codeElementStyle.fontWeight};
 padding-right:0;max-height: none;box-sizing: border-box;position: absolute;padding-top:0 !important;padding-bottom:0 !important;min-height:auto !important;`);
         lineNumberTemp.setAttribute("contenteditable", "true");
         block.insertAdjacentElement("afterend", lineNumberTemp);

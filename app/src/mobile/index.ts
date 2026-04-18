@@ -2,7 +2,12 @@ import {addScript, addScriptSync} from "../protyle/util/addScript";
 import {Constants} from "../constants";
 import {onMessage} from "./util/onMessage";
 import {genUUID} from "../util/genID";
-import {hasClosestBlock, hasClosestByAttribute, hasTopClosestByClassName} from "../protyle/util/hasClosest";
+import {
+    hasClosestBlock,
+    hasClosestByAttribute,
+    hasClosestByClassName,
+    hasTopClosestByClassName
+} from "../protyle/util/hasClosest";
 import {Model} from "../layout/Model";
 import "../assets/scss/mobile.scss";
 import {Menus} from "../menus";
@@ -15,12 +20,7 @@ import {bootSync} from "../dialog/processSystem";
 import {initMessage, showMessage} from "../dialog/message";
 import {goBack} from "./util/MobileBackFoward";
 import {activeBlur, hideKeyboardToolbar, showKeyboardToolbar} from "./util/keyboardToolbar";
-import {
-    getLocalStorage,
-    isChromeBrowser,
-    isInMobileApp,
-    writeText
-} from "../protyle/util/compatibility";
+import {getLocalStorage, isChromeBrowser, isInMobileApp, writeText} from "../protyle/util/compatibility";
 import {getCurrentEditor, openMobileFileById} from "./editor";
 import {getSearch} from "../util/functions";
 import {checkPublishServiceClosed} from "../util/processMessage";
@@ -35,9 +35,9 @@ import {updateCardHV} from "../card/util";
 import {mobileKeydown} from "./util/keydown";
 import {correctHotkey} from "../boot/globalEvent/commonHotkey";
 import {processIOSPurchaseResponse} from "../util/iOSPurchase";
-import {updateControlAlt} from "../protyle/util/hotKey";
 import {nbsp2space} from "../protyle/util/normalizeText";
-import {callMobileAppShowKeyboard, canInput} from "./util/mobileAppUtil";
+import {callMobileAppShowKeyboard, canInput, setWebViewFocusable} from "./util/mobileAppUtil";
+import {hideAllElements} from "../protyle/ui/hideElements";
 
 class App {
     public plugins: import("../plugin").Plugin[] = [];
@@ -106,6 +106,9 @@ class App {
                     callMobileAppShowKeyboard();
                 }
             }
+            if (!hasClosestByClassName(event.target as Element, "protyle-util")) {
+                hideAllElements(["util"]);
+            }
         });
         if (window.JSAndroid && window.JSAndroid.showKeyboard || window.JSHarmony && window.JSHarmony.showKeyboard) {
             const __siyuan_original_focus = HTMLElement.prototype.focus;
@@ -137,7 +140,6 @@ class App {
             addScriptSync(`${Constants.PROTYLE_CDN}/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}`, "protyleLuteScript");
             addScript(`${Constants.PROTYLE_CDN}/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}`, "protyleWcHtmlScript");
             window.siyuan.config = confResponse.data.conf;
-            updateControlAlt();
             window.siyuan.isPublish = confResponse.data.isPublish;
             correctHotkey(siyuanApp);
             await loadPlugins(this);
@@ -179,6 +181,9 @@ class App {
                 window.siyuan.ctrlIsPressed = false;
                 window.siyuan.shiftIsPressed = false;
                 window.siyuan.altIsPressed = false;
+            });
+            window.addEventListener("blur", () => {
+                setWebViewFocusable();
             });
             // 移动端删除键 https://github.com/siyuan-note/siyuan/issues/9259
             window.addEventListener("keydown", (event) => {

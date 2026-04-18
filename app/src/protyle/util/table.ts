@@ -190,9 +190,9 @@ export const insertColumn = (protyle: IProtyle, nodeElement: Element, cellElemen
         const tag = colCellElement.tagName.toLowerCase();
         let html = "";
         if (colCellElement === cellElement) {
-            html = `<${tag}><wbr> </${tag}>` + `<${tag}> </${tag}>`.repeat(count - 1);
+            html = `<${tag}><wbr></${tag}>` + `<${tag}></${tag}>`.repeat(count - 1);
         } else {
-            html = `<${tag}> </${tag}>`.repeat(count);
+            html = `<${tag}></${tag}>`.repeat(count);
         }
         colCellElement.insertAdjacentHTML(type, html);
     }
@@ -447,7 +447,7 @@ export const fixTable = (protyle: IProtyle, event: KeyboardEvent, range: Range) 
         if (event.key === "ArrowRight" && range.toString() === "" &&
             !nodeElement.nextElementSibling &&
             cellElement === nodeElement.querySelector("table").lastElementChild.lastElementChild.lastElementChild &&
-            getSelectionOffset(cellElement, protyle.wysiwyg.element, range).start === cellElement.textContent.length) {
+            getSelectionOffset(cellElement, protyle.wysiwyg.element, range).start === cellElement.innerText.length) {
             event.preventDefault();
             insertEmptyBlock(protyle, "afterend", nodeElement.getAttribute("data-node-id"));
             return true;

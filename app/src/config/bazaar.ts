@@ -14,7 +14,7 @@ import {Plugin} from "../plugin";
 import {App} from "../index";
 import {escapeAttr} from "../util/escape";
 import {uninstall} from "../plugin/uninstall";
-import {afterLoadPlugin, loadPlugin, loadPlugins, reloadPlugin} from "../plugin/loader";
+import {afterLoadPlugin, loadPlugin, loadPlugins} from "../plugin/loader";
 import {useShell} from "../util/pathName";
 
 export const bazaar = {
@@ -101,7 +101,7 @@ export const bazaar = {
             <input ${window.siyuan.config.bazaar.petalDisabled ? "" : " checked"} data-type="plugins-enable" type="checkbox" class="b3-switch fn__flex-center" style="margin-right: 8px">
             <div class="counter counter--bg fn__none fn__flex-center ariaLabel" data-position="north" aria-label="${window.siyuan.languages.total}"></div>
         </div>
-        <div id="configBazaarDownloaded" class="config-bazaar__content">
+        <div id="configBazaarDownloaded" class="config-bazaar__content b3-cards b3-cards--nowrap">
             ${loadingHTML}
         </div>
     </div>
@@ -236,9 +236,9 @@ export const bazaar = {
         }
         try {
             new URL(funding);
-            return `<a target="_blank" href="${escapeAttr(funding)}" class="block__icon block__icon--show ariaLabel" data-position="north" aria-label="${window.siyuan.languages.sponsor} ${escapeAttr(funding)}"><svg class="ft__pink"><use xlink:href="#iconHeart"></use></svg></a>`;
+            return `<span class="fn__space--small"></span><a target="_blank" href="${escapeAttr(funding)}" class="block__icon block__icon--show ariaLabel" data-position="north" aria-label="${window.siyuan.languages.sponsor} ${escapeAttr(funding)}"><svg class="ft__pink"><use xlink:href="#iconHeart"></use></svg></a>`;
         } catch (e) {
-            return `<span data-type="copy-funding" data-funding="${escapeAttr(funding)}" class="block__icon block__icon--show ariaLabel" data-position="north" aria-label="${window.siyuan.languages.sponsor} ${escapeAttr(funding)}"><svg class="ft__pink"><use xlink:href="#iconHeart"></use></svg></span>`;
+            return `<span class="fn__space--small"></span><span data-type="copy-funding" data-funding="${escapeAttr(funding)}" class="block__icon block__icon--show ariaLabel" data-position="north" aria-label="${window.siyuan.languages.sponsor} ${escapeAttr(funding)}"><svg class="ft__pink"><use xlink:href="#iconHeart"></use></svg></span>`;
         }
     },
     _genCardHTML(item: IBazaarItem, bazaarType: TBazaarType) {
@@ -246,11 +246,11 @@ export const bazaar = {
         let themeMode = "";
         if (bazaarType === "themes") {
             const themeValue = (bazaar.element.querySelector("#bazaarSelect") as HTMLSelectElement).value;
-            if ((themeValue === "0" && item.modes.includes("dark")) ||
-                themeValue === "1" && item.modes.includes("light")) {
+            if ((themeValue === "0" && item.modes?.includes("dark")) ||
+                themeValue === "1" && item.modes?.includes("light")) {
                 hide = true;
             }
-            themeMode = item.modes.toString();
+            themeMode = item.modes?.toString() || "";
         }
         let showSwitch = false;
         if (["icons", "themes"].includes(bazaarType)) {
@@ -266,35 +266,37 @@ export const bazaar = {
             downloads: item.downloads,
             downloaded: false,
         };
-        return `<div data-obj='${JSON.stringify(dataObj)}' class="b3-card b3-card--wrap${hide ? " fn__none" : ""}${item.current ? " b3-card--current" : ""}">
+        return `<div data-obj='${JSON.stringify(dataObj)}' class="b3-card${hide ? " fn__none" : ""}${item.current ? " b3-card--current" : ""}">
     <div class="b3-card__img">
         <img src="${item.iconURL}" loading="lazy" onerror="this.src='/stage/images/icon.png'"/>
     </div>
     <div class="fn__flex-1 fn__flex-column">
         <div class="b3-card__info fn__flex-1">
-            ${item.preferredName}${item.preferredName !== item.name ? ` <span class="ft__on-surface ft__smaller">${item.name}</span>` : ""}
+            ${item.preferredName}
             <div class="b3-card__desc" title="${escapeAttr(item.preferredDesc) || ""}">
                 ${item.preferredDesc || ""}
             </div>
         </div>
         <div class="b3-card__actions">
-            <span class="block__icon block__icon--show ft__primary">
+            <span class="block__icon block__icon--show block__icon--text">
                 <svg><use xlink:href="#iconDownload"></use></svg>
-                <span class="fn__space"></span>
+                <span class="fn__space--small"></span>
                 ${item.downloads}
             </span>
-            <span class="fn__space"></span>
-            ${bazaar._genFundingHTML(item.preferredFunding)}
-            <span class="fn__space"></span>
-            <div class="fn__flex-1"></div>
-            <span data-position="north" class="ariaLabel block__icon block__icon--show${item.installed ? "" : " fn__none"}" data-type="uninstall" aria-label="${window.siyuan.languages.uninstall}">
-                <svg><use xlink:href="#iconTrashcan"></use></svg>
+            <span class="fn__space--small"></span>
+            <span class="block__icon block__icon--show block__icon--text">
+                <svg><use xlink:href="#iconAccount"></use></svg>
+                <span class="fn__space--small"></span>
+                ${item.author}
             </span>
-            <div class="fn__space${!item.current && item.installed && showSwitch ? "" : " fn__none"}"></div>
+            ${bazaar._genFundingHTML(item.preferredFunding)}
+            <span class="fn__space--small"></span>
+            <div class="fn__flex-1"></div>
+            <div class="fn__space--small${!item.current && item.installed && showSwitch ? "" : " fn__none"}"></div>
             <span data-position="north" class="ariaLabel block__icon block__icon--show${!item.current && item.installed && showSwitch ? "" : " fn__none"}" data-type="switch" aria-label="${window.siyuan.languages.use}">
                 <svg><use xlink:href="#iconSelect"></use></svg>
             </span>
-            <div class="fn__space${item.outdated ? "" : " fn__none"}"></div>
+            <div class="fn__space--small${item.outdated ? "" : " fn__none"}"></div>
             <span data-type="install-t" ${item.disallowUpdate ? "disabled" : ""} aria-label="${item.disallowUpdate ? window.siyuan.languages.bazaarNeedVersion.replace("${x}", item.updateRequiredMinAppVer) : window.siyuan.languages.update}" data-position="north" class="ariaLabel block__icon block__icon--show${item.outdated ? "" : " fn__none"}">
                 <svg class="ft__primary"><use xlink:href="#iconRefresh"></use></svg>
             </span>
@@ -316,7 +318,7 @@ export const bazaar = {
     <div class="b3-card__img"><img src="${item.iconURL}" loading="lazy" onerror="this.src='/stage/images/icon.png'"/></div>
     <div class="fn__flex-1 fn__flex-column">
         <div class="b3-card__info b3-card__info--left fn__flex-1">
-            ${item.preferredName}${item.preferredName !== item.name ? ` <span class="ft__on-surface ft__smaller">${item.name}</span>` : ""}
+            ${item.preferredName}
             <div class="b3-card__desc" title="${escapeAttr(item.preferredDesc) || ""}">${item.preferredDesc || ""}</div>
         </div>
     </div>
@@ -362,7 +364,7 @@ export const bazaar = {
     <span class="fn__space"></span>
     <div class="counter counter--bg fn__flex-center ariaLabel" data-position="north" aria-label="${window.siyuan.languages.total}">${allCount}</div>
 </div>
-<div class="config-bazaar__content">${html}</div>`;
+<div class="config-bazaar__content b3-cards b3-cards--nowrap">${html}</div>`;
         });
     },
     _genMyHTML(bazaarType: TBazaarType, app: App, updateUpdate = true) {
@@ -425,7 +427,7 @@ export const bazaar = {
     <div class="b3-card__img"><img src="${item.iconURL}" loading="lazy" onerror="this.src='/stage/images/icon.png'"/></div>
     <div class="fn__flex-1 fn__flex-column">
         <div class="b3-card__info b3-card__info--left fn__flex-1">
-            ${item.preferredName}${item.preferredName !== item.name ? ` <span class="ft__on-surface ft__smaller">${item.name}</span>` : ""}
+            ${item.preferredName}
             <div class="b3-card__desc" title="${escapeAttr(item.preferredDesc) || ""}">${item.preferredDesc || ""}</div>
         </div>
     </div>
@@ -467,7 +469,7 @@ type="checkbox">
             } else {
                 checkElement.classList.add("fn__none");
             }
-            contentElement.innerHTML = html ? html : `<div class="fn__hr"></div><ul class="b3-list b3-list--background"><li class="b3-list--empty">${window.siyuan.languages.emptyContent}</li></ul>`;
+            contentElement.innerHTML = html ? html : `<ul class="b3-list b3-list--background"><li class="b3-list--empty">${window.siyuan.languages.emptyContent}</li></ul>`;
         });
     },
     _data: {
@@ -527,7 +529,7 @@ type="checkbox">
         <span class="fn__flex-1"></span>
         ${data.preferredFunding ?
             bazaar._genFundingHTML(data.preferredFunding) :
-            `<span data-position="north" class="ariaLabel block__icon block__icon--show ft__primary" aria-label="${window.siyuan.languages.author}" style="cursor: default"><svg><use xlink:href="#iconAccount"></use></svg></span>`
+            '<span class="block__icon block__icon--show block__icon--text" style="cursor: default"><svg><use xlink:href="#iconAccount"></use></svg></span>'
         }
         <span class="fn__space"></span>
         <a href="${urls.join("/")}" target="_blank" title="Creator">${data.author}</a>
@@ -593,9 +595,9 @@ type="checkbox">
         <img data-type="img-loading" style="height: 64px;width: 100%;padding: 16px 0;" src="/stage/loading-pure.svg">
     </div>
 </div>`;
-        if (downloaded && data.preferredReadme) {
+        if (downloaded) {
             const mdElement = readmeElement.querySelector(".item__readme");
-            mdElement.innerHTML = data.preferredReadme;
+            mdElement.innerHTML = data.preferredReadme || "";
             highlightRender(mdElement);
         } else {
             fetchPost("/api/bazaar/getBazaarPackageREADME", {
@@ -697,8 +699,11 @@ type="checkbox">
                             repoHash: dataObj.repoHash,
                             mode: dataObj.themeMode === "dark" ? 1 : 0,
                             frontend: getFrontend()
-                        }, async response => {
+                        }, response => {
                             bazaar._onBazaar(response, bazaarType);
+                            if (response.code !== 0) {
+                                return;
+                            }
                             bazaar._genMyHTML(bazaarType, app, false);
                             if (bazaarType === "plugins") {
                                 if (window.siyuan.config.bazaar.petalDisabled) {
@@ -708,7 +713,6 @@ type="checkbox">
                                         fetchPost("/api/petal/setPetalEnabled", {
                                             packageName: dataObj.name,
                                             enabled: true,
-                                            frontend: getFrontend(),
                                             app: Constants.SIYUAN_APPID,
                                         }, (response) => {
                                             loadPlugin(app, response.data);
@@ -724,7 +728,7 @@ type="checkbox">
                     break;
                 } else if (type === "install-all") {
                     confirmDialog("⬆️ " + window.siyuan.languages.updateAll, window.siyuan.languages.confirmUpdateAll, () => {
-                        fetchPost("/api/bazaar/batchUpdatePackage", {frontend: getFrontend()});
+                        fetchPost("/api/bazaar/batchUpdatePackage");
                     });
                     event.preventDefault();
                     event.stopPropagation();
@@ -756,27 +760,10 @@ type="checkbox">
                                 packageName: dataObj.name,
                                 repoHash: dataObj.repoHash,
                                 mode: dataObj.themeMode === "dark" ? 1 : 0,
-                                update: true,
                                 frontend: getFrontend()
-                            }, async response => {
+                            }, response => {
                                 this._genMyHTML(bazaarType, app);
                                 bazaar._onBazaar(response, bazaarType);
-                                // https://github.com/siyuan-note/siyuan/issues/15177
-                                if (bazaarType === "themes" && response.data.appearance?.themeVer) {
-                                    window.siyuan.config.appearance.themeVer = response.data.appearance.themeVer;
-                                }
-                                // 更新主题后不需要对该主题进行切换 https://github.com/siyuan-note/siyuan/issues/4966
-                                // https://github.com/siyuan-note/siyuan/issues/5411
-                                if (bazaarType === "plugins") {
-                                    app.plugins.find((item: Plugin) => {
-                                        if (item.name === dataObj.name) {
-                                            reloadPlugin(app, {
-                                                upsertCodePlugins: [dataObj.name],
-                                            });
-                                            return true;
-                                        }
-                                    });
-                                }
                             });
                         });
                     }
@@ -837,7 +824,7 @@ type="checkbox">
                             modeOS: false,
                             themeDark: mode === 1 ? packageName : window.siyuan.config.appearance.themeDark,
                             themeLight: mode === 0 ? packageName : window.siyuan.config.appearance.themeLight,
-                        }), async (appearanceResponse) => {
+                        }), (appearanceResponse) => {
                             this._genMyHTML("themes", app, false);
                             fetchPost("/api/bazaar/getBazaarTheme", {}, response => {
                                 response.data.appearance = appearanceResponse.data;
@@ -892,7 +879,6 @@ type="checkbox">
                         fetchPost("/api/petal/setPetalEnabled", {
                             packageName: dataObj.name,
                             enabled,
-                            frontend: getFrontend(),
                             app: Constants.SIYUAN_APPID,
                         }, (response) => {
                             target.removeAttribute("disabled");
@@ -1090,21 +1076,12 @@ type="checkbox">
                     }
                     localSort[selectElement.parentElement.parentElement.getAttribute("data-type")] = selectElement.value;
                     setStorageVal(Constants.LOCAL_BAZAAR, window.siyuan.storage[Constants.LOCAL_BAZAAR]);
-                    if (cardElements.length > 1) {
-                        html += '<div class="fn__flex-1" style="margin-left: 15px;min-width: 342px;"></div><div class="fn__flex-1" style="margin-left: 15px;min-width: 342px;"></div>';
-                    }
                     panelElement.querySelector(".b3-cards").innerHTML = html;
                 }
             });
         });
     },
     _onBazaar(response: IWebSocketData, bazaarType: TBazaarType) {
-        if (bazaar.element.querySelector("#configBazaarReadme").classList.contains("config-bazaar__readme--show")) {
-            const dataObj = JSON.parse(bazaar.element.querySelector("#configBazaarReadme > .item__side").getAttribute("data-obj"));
-            bazaar._renderReadme((dataObj.bazaarType) as TBazaarType,
-                response.data.packages.find((item: IBazaarItem) => item.repoURL === dataObj.repoURL),
-                dataObj.downloaded);
-        }
         let id = "#configBazaarTemplate";
         if (bazaarType === "themes") {
             id = "#configBazaarTheme";
@@ -1117,10 +1094,18 @@ type="checkbox">
         }
         const element = bazaar.element.querySelector(id);
         if (response.code === 1) {
+            // 安装集市包 /api/bazaar/installBazaar* 失败
             showMessage(response.msg);
             element.querySelectorAll("img[data-type='img-loading']").forEach((item) => {
                 item.remove();
             });
+            return;
+        }
+        if (bazaar.element.querySelector("#configBazaarReadme").classList.contains("config-bazaar__readme--show")) {
+            const dataObj = JSON.parse(bazaar.element.querySelector("#configBazaarReadme > .item__side").getAttribute("data-obj"));
+            bazaar._renderReadme((dataObj.bazaarType) as TBazaarType,
+                response.data.packages.find((item: IBazaarItem) => item.repoURL === dataObj.repoURL),
+                dataObj.downloaded);
         }
         let html = "";
         response.data.packages.forEach((item: IBazaarItem) => {
@@ -1152,9 +1137,6 @@ type="checkbox">
                 html += item.outerHTML;
             });
         }
-        if (response.data.packages.length > 1) {
-            html += '<div class="fn__flex-1" style="margin-left: 15px;min-width: 342px;"></div><div class="fn__flex-1" style="margin-left: 15px;min-width: 342px;"></div>';
-        }
-        element.innerHTML = `<div class="b3-cards">${html}</div>`;
+        element.innerHTML = `<div class="b3-cards${html ? "" : " b3-cards--nowrap"}">${html || `<ul class="b3-list b3-list--background"><li class="b3-list--empty">${window.siyuan.languages.emptyContent}</li></ul>`}</div>`;
     }
 };

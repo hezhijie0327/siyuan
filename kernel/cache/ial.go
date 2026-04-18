@@ -24,7 +24,7 @@ import (
 )
 
 var docIALCache, _ = ristretto.NewCache(&ristretto.Config{
-	NumCounters: 1024 * 100,
+	NumCounters: 100000,
 	MaxCost:     1024 * 1024 * 200,
 	BufferItems: 64,
 })
@@ -55,12 +55,13 @@ func ClearDocsIAL() {
 }
 
 var blockIALCache, _ = ristretto.NewCache(&ristretto.Config{
-	NumCounters: 1024 * 1000,
+	NumCounters: 100000,
 	MaxCost:     1024 * 1024 * 200,
 	BufferItems: 64,
 })
 
 func PutBlockIAL(id string, ial map[string]string) {
+	// 这里存入的属性值都是反转义过的，用的是 parse.IAL2Map()，而不是 parse.IAL2MapUnEsc()
 	blockIALCache.Set(id, ial, 128)
 }
 

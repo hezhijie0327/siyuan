@@ -47,8 +47,12 @@ import (
 )
 
 func RemoveUnusedAttributeView(id string) {
-	absPath := filepath.Join(util.DataDir, "storage", "av", id+".json")
+	base := filepath.Join(util.DataDir, "storage", "av")
+	absPath := filepath.Join(base, id+".json")
 	if !filelock.IsExist(absPath) {
+		return
+	}
+	if !gulu.File.IsSubPath(base, absPath) {
 		return
 	}
 
@@ -88,7 +92,7 @@ func RemoveUnusedAttributeViews() (ret []string) {
 		util.PushUpdateMsg(msgId, msg, 7000)
 	}()
 
-	unusedAttributeViews := UnusedAttributeViews()
+	unusedAttributeViews := UnusedAttributeViews(false)
 
 	historyDir, err := GetHistoryDir(HistoryOpClean)
 	if err != nil {
@@ -132,7 +136,7 @@ func RemoveUnusedAttributeViews() (ret []string) {
 	return
 }
 
-func UnusedAttributeViews() (ret []*UnusedItem) {
+func UnusedAttributeViews(sorted bool) (ret []*UnusedItem) {
 	defer logging.Recover()
 	ret = []*UnusedItem{}
 
@@ -172,26 +176,27 @@ func UnusedAttributeViews() (ret []*UnusedItem) {
 	for _, id := range allAvIDs {
 		if !docReferencedAvIDs[id] && !isRelatedSrcAvDocReferenced(id, docReferencedAvIDs, checkedAvIDs) {
 			name, _ := av.GetAttributeViewName(id)
-			ret = append(ret, &UnusedItem{Item: id, Name: name})
+
+			var modTime time.Time
+			if sorted {
+				p := filepath.Join(util.DataDir, "storage", "av", id+".json")
+				if info, statErr := os.Stat(p); nil == statErr {
+					modTime = info.ModTime()
+				}
+			}
+
+			ret = append(ret, &UnusedItem{Item: id, Name: name, ModTime: modTime})
 		}
 	}
 
-	// 按文件更新时间排序
-	modTimes := make([]time.Time, len(ret))
-	for i := range ret {
-		p := filepath.Join(util.DataDir, "storage", "av", ret[i].Item+".json")
-		if info, statErr := os.Stat(p); nil != statErr {
-			modTimes[i] = info.ModTime()
-		} else {
-			modTimes[i] = time.Time{}
-		}
+	if sorted {
+		sort.Slice(ret, func(i, j int) bool {
+			if !ret[i].ModTime.Equal(ret[j].ModTime) {
+				return ret[i].ModTime.After(ret[j].ModTime)
+			}
+			return ret[i].Item > ret[j].Item
+		})
 	}
-	sort.Slice(ret, func(i, j int) bool {
-		if !modTimes[i].Equal(modTimes[j]) {
-			return modTimes[i].After(modTimes[j])
-		}
-		return ret[i].Item > ret[j].Item
-	})
 	return
 }
 
@@ -2520,7 +2525,7 @@ func updateAttributeViewColRollup(operation *Operation) (err error) {
 		return
 	}
 
-	data := operation.Data.(map[string]interface{})
+	data := operation.Data.(map[string]any)
 	if nil != data["calc"] {
 		calcData, jsonErr := gulu.JSON.MarshalJSON(data["calc"])
 		if nil != jsonErr {
@@ -2822,7 +2827,7 @@ func (tx *Transaction) doRemoveAttrViewView(operation *Operation) (ret *TxErr) {
 			}
 
 			cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
-			pushBroadcastAttrTransactions(oldAttrs, node)
+			pushBlockAttrs(oldAttrs, node)
 		}
 	}
 
@@ -3255,7 +3260,7 @@ func (tx *Transaction) setAttributeViewName(operation *Operation) (err error) {
 		avNames := getAvNames(node.IALAttr(av.NodeAttrNameAvs))
 		oldAttrs := parse.IAL2Map(node.KramdownIAL)
 		node.SetIALAttr(av.NodeAttrViewNames, avNames)
-		pushBroadcastAttrTransactions(oldAttrs, node)
+		pushBlockAttrs(oldAttrs, node)
 	}
 	return
 }
@@ -3338,7 +3343,7 @@ func setAttributeViewFilters(operation *Operation) (err error) {
 		return
 	}
 
-	operationData := operation.Data.([]interface{})
+	operationData := operation.Data.([]any)
 	data, err := gulu.JSON.MarshalJSON(operationData)
 	if err != nil {
 		return
@@ -3371,7 +3376,7 @@ func setAttributeViewSorts(operation *Operation) (err error) {
 		return
 	}
 
-	operationData := operation.Data.([]interface{})
+	operationData := operation.Data.([]any)
 	data, err := gulu.JSON.MarshalJSON(operationData)
 	if err != nil {
 		return
@@ -3429,7 +3434,7 @@ func setAttributeViewColumnCalc(operation *Operation) (err error) {
 		return
 	}
 
-	operationData := operation.Data.(interface{})
+	operationData := operation.Data.(any)
 	data, err := gulu.JSON.MarshalJSON(operationData)
 	if err != nil {
 		return
@@ -3457,18 +3462,14 @@ func setAttributeViewColumnCalc(operation *Operation) (err error) {
 }
 
 func (tx *Transaction) doInsertAttrViewBlock(operation *Operation) (ret *TxErr) {
-	if nil == operation.Context {
-		operation.Context = map[string]interface{}{}
-	}
-
-	err := AddAttributeViewBlock(tx, operation.Srcs, operation.AvID, operation.BlockID, operation.ViewID, operation.GroupID, operation.PreviousID, operation.IgnoreDefaultFill, operation.Context)
+	err := AddAttributeViewBlock(tx, operation.Srcs, operation.AvID, operation.BlockID, operation.ViewID, operation.GroupID, operation.PreviousID, operation.IgnoreDefaultFill)
 	if err != nil {
 		return &TxErr{code: TxErrHandleAttributeView, id: operation.AvID, msg: err.Error()}
 	}
 	return
 }
 
-func AddAttributeViewBlock(tx *Transaction, srcs []map[string]interface{}, avID, dbBlockID, viewID, groupID, previousItemID string, ignoreDefaultFill bool, context map[string]interface{}) (err error) {
+func AddAttributeViewBlock(tx *Transaction, srcs []map[string]any, avID, dbBlockID, viewID, groupID, previousItemID string, ignoreDefaultFill bool) (err error) {
 	slices.Reverse(srcs) // https://github.com/siyuan-note/siyuan/issues/11286
 
 	now := time.Now().UnixMilli()
@@ -3503,14 +3504,14 @@ func AddAttributeViewBlock(tx *Transaction, srcs []map[string]interface{}, avID,
 		if nil != src["content"] {
 			srcContent = src["content"].(string)
 		}
-		if avErr := addAttributeViewBlock(now, avID, dbBlockID, viewID, groupID, previousItemID, srcItemID, boundBlockID, srcContent, isDetached, ignoreDefaultFill, tree, tx, context); nil != avErr {
+		if avErr := addAttributeViewBlock(now, avID, dbBlockID, viewID, groupID, previousItemID, srcItemID, boundBlockID, srcContent, isDetached, ignoreDefaultFill, tree, tx); nil != avErr {
 			return avErr
 		}
 	}
 	return
 }
 
-func addAttributeViewBlock(now int64, avID, dbBlockID, viewID, groupID, previousItemID, addingItemID, addingBoundBlockID, addingBlockContent string, isDetached, ignoreDefaultFill bool, tree *parse.Tree, tx *Transaction, context map[string]interface{}) (err error) {
+func addAttributeViewBlock(now int64, avID, dbBlockID, viewID, groupID, previousItemID, addingItemID, addingBoundBlockID, addingBlockContent string, isDetached, ignoreDefaultFill bool, tree *parse.Tree, tx *Transaction) (err error) {
 	var node *ast.Node
 	if !isDetached {
 		node = treenode.GetNodeInTree(tree, addingBoundBlockID)
@@ -4456,7 +4457,7 @@ func refreshAttrViewKeyIDs(attrView *av.AttributeView, needSave bool) {
 		existKeyIDs[keyValues.Key.ID] = true
 	}
 
-	for k, _ := range existKeyIDs {
+	for k := range existKeyIDs {
 		if !gulu.Str.Contains(k, attrView.KeyIDs) {
 			attrView.KeyIDs = append(attrView.KeyIDs, k)
 		}
@@ -4991,14 +4992,14 @@ func (tx *Transaction) doUpdateAttrViewCell(operation *Operation) (ret *TxErr) {
 	return
 }
 
-func BatchUpdateAttributeViewCells(tx *Transaction, avID string, values []interface{}) (err error) {
+func BatchUpdateAttributeViewCells(tx *Transaction, avID string, values []any) (err error) {
 	attrView, err := av.ParseAttributeView(avID)
 	if err != nil {
 		return
 	}
 
 	for _, value := range values {
-		v := value.(map[string]interface{})
+		v := value.(map[string]any)
 		keyID := v["keyID"].(string)
 		var itemID string
 		if _, ok := v["itemID"]; ok {
@@ -5006,6 +5007,8 @@ func BatchUpdateAttributeViewCells(tx *Transaction, avID string, values []interf
 		} else if _, ok := v["rowID"]; ok {
 			// TODO 计划于 2026 年 6 月 30 日后删除 https://github.com/siyuan-note/siyuan/issues/15708#issuecomment-3239694546
 			itemID = v["rowID"].(string)
+			logging.LogWarnf("[%s] parameter [%s] is deprecated, it will be removed at [%s], visit [https://github.com/siyuan-note/siyuan/issues/15727] for details",
+				"/api/av/batchSetAttributeViewBlockAttrs", "rowID", "2026-06-30")
 		}
 		valueData := v["value"]
 		_, err = updateAttributeViewValue(tx, attrView, keyID, itemID, valueData)
@@ -5016,7 +5019,7 @@ func BatchUpdateAttributeViewCells(tx *Transaction, avID string, values []interf
 	return
 }
 
-func UpdateAttributeViewCell(tx *Transaction, avID, keyID, itemID string, valueData interface{}) (val *av.Value, err error) {
+func UpdateAttributeViewCell(tx *Transaction, avID, keyID, itemID string, valueData any) (val *av.Value, err error) {
 	attrView, err := av.ParseAttributeView(avID)
 	if err != nil {
 		return
@@ -5029,7 +5032,7 @@ func UpdateAttributeViewCell(tx *Transaction, avID, keyID, itemID string, valueD
 	return
 }
 
-func updateAttributeViewValue(tx *Transaction, attrView *av.AttributeView, keyID, itemID string, valueData interface{}) (val *av.Value, err error) {
+func updateAttributeViewValue(tx *Transaction, attrView *av.AttributeView, keyID, itemID string, valueData any) (val *av.Value, err error) {
 	avID := attrView.ID
 	var blockVal *av.Value
 	for _, kv := range attrView.KeyValues {
@@ -5622,7 +5625,7 @@ func updateAttributeViewColumnOption(operation *Operation) (err error) {
 		return
 	}
 
-	data := operation.Data.(map[string]interface{})
+	data := operation.Data.(map[string]any)
 
 	rename := false
 	oldName := strings.TrimSpace(data["oldName"].(string))
@@ -5741,7 +5744,7 @@ func setAttributeViewColumnOptionDesc(operation *Operation) (err error) {
 		return
 	}
 
-	data := operation.Data.(map[string]interface{})
+	data := operation.Data.(map[string]any)
 	name := data["name"].(string)
 	desc := data["desc"].(string)
 
@@ -5832,7 +5835,7 @@ func updateBoundBlockAvsAttribute(avIDs []string) {
 				continue
 			}
 			cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
-			pushBroadcastAttrTransactions(oldAttrs, node)
+			pushBlockAttrs(oldAttrs, node)
 			if "" != avNames {
 				node.RemoveIALAttr(av.NodeAttrViewNames)
 			}
