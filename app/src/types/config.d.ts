@@ -289,6 +289,7 @@ declare namespace Config {
         | "pl_PL"
         | "pt_BR"
         | "ru_RU"
+        | "sk_SK"
         | "tr_TR"
         | "zh_CN"
         | "zh_CHT";
@@ -441,6 +442,11 @@ declare namespace Config {
          */
         floatWindowMode: number;
         /**
+         * Hover delay of the floating window in milliseconds.
+         * Only takes effect when `floatWindowMode` is `0`.
+         */
+        floatWindowDelay: number;
+        /**
          * The font used in the editor
          */
         fontFamily: string;
@@ -489,6 +495,10 @@ declare namespace Config {
          * PlantUML rendering service address
          */
         plantUMLServePath: string;
+        /**
+         * Whether to auto-convert pasted URLs to links
+         */
+        pasteURLAutoConvert: boolean;
         /**
          * Whether to enable read-only mode
          */

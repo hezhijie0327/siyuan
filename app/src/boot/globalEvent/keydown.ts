@@ -30,7 +30,7 @@ import {goBack, goForward} from "../../util/backForward";
 import {getDisplayName, getNotebookName} from "../../util/pathName";
 import {openFileById} from "../../editor/util";
 import {getAllDocks, getAllModels, getAllTabs} from "../../layout/getAll";
-import {focusBlock, focusByOffset, focusByRange, getSelectionOffset} from "../../protyle/util/selection";
+import {focusBlock, focusByRange} from "../../protyle/util/selection";
 import {initFileMenu, initNavigationMenu} from "../../menus/navigation";
 import {bindMenuKeydown} from "../../menus/Menu";
 import {Dialog} from "../../dialog";
@@ -440,15 +440,12 @@ const editKeydown = (app: App, event: KeyboardEvent) => {
     }
     if (matchHotKey(window.siyuan.config.keymap.editor.general.outline.custom, event)) {
         event.preventDefault();
-        const offset = getSelectionOffset(target);
         openOutline({
             app,
             rootId: protyle.block.rootID,
             title: protyle.options.render.title ? (protyle.title.editElement.textContent || window.siyuan.languages.untitled) : "",
             isPreview: !protyle.preview.element.classList.contains("fn__none")
         });
-        // switchWnd 后，range会被清空，需要重新设置
-        focusByOffset(target, offset.start, offset.end);
         return true;
     }
     if (matchHotKey(window.siyuan.config.keymap.editor.general.copyPlainText.custom, event)) {
@@ -636,10 +633,6 @@ const fileTreeKeydown = (app: App, event: KeyboardEvent) => {
                 action: "addFlashcards",
                 deckID: Constants.QUICK_DECK_ID,
                 blockIDs: ids,
-            }], [{
-                action: "removeFlashcards",
-                deckID: Constants.QUICK_DECK_ID,
-                blockIDs: ids,
             }]);
         }
         event.preventDefault();
@@ -658,12 +651,26 @@ const fileTreeKeydown = (app: App, event: KeyboardEvent) => {
 
     if (matchHotKey(window.siyuan.config.keymap.editor.general.rename.custom, event)) {
         window.siyuan.menus.menu.remove();
-        rename({
-            notebookId,
-            path: pathString,
-            name: isFile ? getDisplayName(liElements[0].getAttribute("data-name"), false, true) : getNotebookName(notebookId),
-            type: isFile ? "file" : "notebook",
-        });
+        if (isFile) {
+            fetchPost("/api/block/getDocInfo", {
+                id: liElements[0].getAttribute("data-node-id")
+            }, (response) => {
+                rename({
+                    notebookId,
+                    path: pathString,
+                    name: response.data.ial.title,
+                    empty: response.data.ial[Constants.CUSTOM_SY_TITLE_EMPTY] === "true",
+                    type: "file",
+                });
+            });
+        } else {
+            rename({
+                notebookId,
+                path: pathString,
+                name: getNotebookName(notebookId),
+                type: "notebook",
+            });
+        }
         event.preventDefault();
         return true;
     }

@@ -16,7 +16,7 @@ import {confirmDialog} from "./confirmDialog";
 import {escapeHtml} from "../util/escape";
 import {getWorkspaceName} from "../util/noRelyPCFunction";
 import {needSubscribe} from "../util/needSubscribe";
-import {redirectToCheckAuth, setNoteBook} from "../util/pathName";
+import {setNoteBook} from "../util/pathName";
 import {reloadProtyle} from "../protyle/util/reload";
 import {Tab} from "../layout/Tab";
 import {setEmpty} from "../mobile/util/setEmpty";
@@ -32,7 +32,7 @@ const updateTitle = (rootID: string, tab: Tab, protyle?: IProtyle) => {
     }, (response) => {
         tab.updateTitle(response.data.name);
         if (protyle && protyle.title) {
-            protyle.title.setTitle(response.data.name);
+            protyle.title.setTitle(response.data.name, response.data.ial[Constants.CUSTOM_SY_TITLE_EMPTY] === "true");
         }
     });
 };
@@ -66,7 +66,7 @@ export const reloadSync = (
                 id: window.siyuan.mobile.editor.protyle.block.rootID
             }, (response) => {
                 setTitle(response.data.name);
-                window.siyuan.mobile.editor.protyle.title.setTitle(response.data.name);
+                window.siyuan.mobile.editor.protyle.title.setTitle(response.data.name, response.data.ial[Constants.CUSTOM_SY_TITLE_EMPTY] === "true");
             });
         }
     }
@@ -190,7 +190,7 @@ export const setDefRefCount = (data: {
         // 不能对比 rootId，否则嵌入块中的锚文本无法更新
         editor.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${data.blockID}"]`).forEach(item => {
             // 不能直接查询，否则列表中会获取到第一个列表项的 attr https://github.com/siyuan-note/siyuan/issues/12738
-            const countElement = item.lastElementChild.querySelector(".protyle-attr--refcount");
+            const countElement = item.lastElementChild?.querySelector(".protyle-attr--refcount");
             if (countElement) {
                 if (data.refCount === 0) {
                     countElement.remove();
@@ -233,20 +233,27 @@ export const setDefRefCount = (data: {
     }
 };
 
-export const lockScreen = (app: App) => {
-    if (window.siyuan.config.readonly) {
+export const lockScreen = async (app: App) => {
+    if (window.siyuan.config.readonly || window.siyuan.isPublish) {
         return;
     }
     app.plugins.forEach(item => {
         item.eventBus.emit("lock-screen");
     });
-    /// #if BROWSER
-    fetchPost("/api/system/logoutAuth", {}, () => {
-        redirectToCheckAuth();
+    /// #if !MOBILE
+    exportLayout({
+        errorExit: false,
+        cb() {
+            fetchPost("/api/system/logoutAuth");
+        }
     });
     /// #else
-    ipcRenderer.send(Constants.SIYUAN_SEND_WINDOWS, {cmd: "lockscreen"});
+    if (window.siyuan.mobile.editor) {
+        await saveScroll(window.siyuan.mobile.editor.protyle);
+        fetchPost("/api/system/logoutAuth");
+    }
     /// #endif
+
 };
 
 export const kernelError = () => {
@@ -371,14 +378,17 @@ export const exitSiYuan = async (setCurrentWorkspace = true) => {
     });
 };
 
-export const transactionError = () => {
+export const transactionError = (msg?: string) => {
     if (document.getElementById("transactionError")) {
         return;
     }
     const dialog = new Dialog({
         disableClose: true,
         title: `${window.siyuan.languages.stateExcepted} v${Constants.SIYUAN_VERSION}`,
-        content: `<div class="b3-dialog__content" id="transactionError">${window.siyuan.languages.rebuildIndexTip}</div>
+        content: `<div class="b3-dialog__content" style="max-height: calc(100vh - 182px)" id="transactionError">
+    ${window.siyuan.languages.rebuildIndexTip}
+    ${msg ? `<div class="fn__hr"></div>${escapeHtml(msg.trim())}` : ""}
+</div>
 <div class="b3-dialog__action">
     <button class="b3-button b3-button--text">${window.siyuan.languages._kernel[97]}</button>
     <div class="fn__space"></div>
@@ -508,10 +518,10 @@ export const bootSync = () => {
     });
 };
 
-export const setTitle = (title: string) => {
+export const setTitle = (title: string, showVersionTitle = false) => {
     const dragElement = document.getElementById("drag");
     const workspaceName = getWorkspaceName();
-    if (title === window.siyuan.languages.siyuanNote) {
+    if (showVersionTitle) {
         const versionTitle = `${workspaceName} - ${window.siyuan.languages.siyuanNote} v${Constants.SIYUAN_VERSION}`;
         document.title = versionTitle;
         if (dragElement) {
@@ -519,7 +529,7 @@ export const setTitle = (title: string) => {
             dragElement.setAttribute("title", versionTitle);
         }
     } else {
-        title = title || window.siyuan.languages.untitled;
+        title = title.trim() || window.siyuan.languages["_kernel"][16];
         document.title = `${title} - ${workspaceName} - ${window.siyuan.languages.siyuanNote} v${Constants.SIYUAN_VERSION}`;
         if (!dragElement) {
             return;
@@ -530,14 +540,14 @@ export const setTitle = (title: string) => {
 };
 
 export const downloadProgress = (data: { id: string, percent: number }) => {
-    const bazzarSideElement = document.querySelector("#configBazaarReadme .item__side");
-    if (!bazzarSideElement) {
+    const bazaarSideElement = document.querySelector("#configBazaarReadme .item__side");
+    if (!bazaarSideElement) {
         return;
     }
-    if (data.id !== JSON.parse(bazzarSideElement.getAttribute("data-obj")).repoURL) {
+    if (data.id !== JSON.parse(bazaarSideElement.getAttribute("data-obj")).repoURL) {
         return;
     }
-    const btnElement = bazzarSideElement.querySelector('[data-type="install"]') as HTMLElement;
+    const btnElement = bazaarSideElement.querySelector('[data-type="install"]') as HTMLElement;
     if (btnElement) {
         if (data.percent >= 1) {
             btnElement.parentElement.classList.add("fn__none");

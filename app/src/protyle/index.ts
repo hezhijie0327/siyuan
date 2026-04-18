@@ -212,7 +212,12 @@ export class Protyle {
                                     this.protyle.title.editElement?.contains(getSelection().getRangeAt(0).startContainer)) {
                                     // 标题编辑中的不用更新 https://github.com/siyuan-note/siyuan/issues/6565
                                 } else {
-                                    this.protyle.title.setTitle(data.data.title);
+                                    this.protyle.title.setTitle(data.data.title, data.data.empty);
+                                }
+                                if (data.data.empty) {
+                                    this.protyle.wysiwyg.element.setAttribute(Constants.CUSTOM_SY_TITLE_EMPTY, "true");
+                                } else {
+                                    this.protyle.wysiwyg.element.removeAttribute(Constants.CUSTOM_SY_TITLE_EMPTY);
                                 }
                             }
                             // update ref
@@ -229,7 +234,8 @@ export class Protyle {
                                 this.protyle.notebookId = data.data.toNotebook;
                             }
                             break;
-                        case "unmount":
+                        case "closeBox":
+                        case "removeBox":
                             if (this.protyle.notebookId === data.data.box) {
                                 /// #if MOBILE
                                 setEmpty(app);
@@ -300,9 +306,15 @@ export class Protyle {
         }
         let needCreateAction = "";
         data.data[0].doOperations.find((item: IOperation) => {
-             if (this.protyle.options.backlinkData && ["delete", "move"].includes(item.action)) {
+            if (this.protyle.options.backlinkData && ["delete", "move"].includes(item.action)) {
                 // 只对特定情况刷新，否则展开、编辑等操作刷新会频繁
                 /// #if !MOBILE
+                if (2 == data.data[0].doOperations.length && "insert" === data.data[0].doOperations[0].action && "delete" === data.data[0].doOperations[1].action) {
+                    // 从反链面板复制块到正文粘贴时不再自动刷新反链面板
+                    // The list in the backlink panel no longer collapses automatically https://github.com/siyuan-note/siyuan/issues/17362
+                    return true;
+                }
+
                 getAllModels().backlink.find(backlinkItem => {
                     if (backlinkItem.element.contains(this.protyle.element)) {
                         backlinkItem.refresh();

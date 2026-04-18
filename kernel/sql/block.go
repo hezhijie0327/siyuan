@@ -144,28 +144,17 @@ func NodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATi
 		return ""
 	}
 
+	if ast.NodeDocument == node.Type {
+		return html.EscapeHTMLStr(node.IALAttr("title"))
+	}
+
 	if ast.NodeAttributeView == node.Type {
 		if fullAttrView {
 			return av.GetAttributeViewContent(node.AttributeViewID)
 		}
 
 		ret, _ := av.GetAttributeViewName(node.AttributeViewID)
-		return ret
-	}
-	return nodeStaticContent(node, excludeTypes, includeTextMarkATitleURL, includeAssetPath)
-}
-
-func nodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATitleURL, includeAssetPath bool) string {
-	if nil == node {
-		return ""
-	}
-
-	if ast.NodeDocument == node.Type {
-		return node.IALAttr("title")
-	}
-
-	if ast.NodeAttributeView == node.Type {
-		return ""
+		return html.EscapeHTMLStr(ret)
 	}
 
 	buf := bytes.Buffer{}
@@ -173,6 +162,17 @@ func nodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATi
 	lastSpace := false
 	ast.Walk(node, func(n *ast.Node, entering bool) ast.WalkStatus {
 		if !entering {
+			if ast.NodeTable == n.Type {
+				caption := n.IALAttr("caption")
+				if "" != caption {
+					caption = html.UnescapeHTMLStr(caption)
+					if strings.Contains(caption, "caption-side:") && strings.Contains(caption, "bottom") {
+						caption = gulu.Str.SubStringBetween(caption, ">", "<")
+						buf.WriteByte(' ')
+						buf.WriteString(caption)
+					}
+				}
+			}
 			return ast.WalkContinue
 		}
 
@@ -207,6 +207,17 @@ func nodeStaticContent(node *ast.Node, excludeTypes []string, includeTextMarkATi
 		}
 
 		switch n.Type {
+		case ast.NodeTable:
+			caption := n.IALAttr("caption")
+			if "" != caption {
+				caption = html.UnescapeHTMLStr(caption)
+				if strings.Contains(caption, "caption-side:") && strings.Contains(caption, "bottom") {
+					return ast.WalkContinue
+				}
+				caption = gulu.Str.SubStringBetween(caption, ">", "<")
+				buf.WriteString(caption)
+				buf.WriteByte(' ')
+			}
 		case ast.NodeTableCell:
 			// 表格块写入数据库表时在单元格之间添加空格 https://github.com/siyuan-note/siyuan/issues/7654
 			if 0 < buf.Len() && ' ' != buf.Bytes()[buf.Len()-1] {

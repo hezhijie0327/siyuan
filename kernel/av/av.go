@@ -73,16 +73,6 @@ func (kValues *KeyValues) GetBlockValue() (ret *Value) {
 	return
 }
 
-func GetKeyBlockValue(blockKeyValues []*KeyValues) (ret *Value) {
-	for _, kv := range blockKeyValues {
-		if KeyTypeBlock == kv.Key.Type && 0 < len(kv.Values) {
-			ret = kv.Values[0]
-			break
-		}
-	}
-	return
-}
-
 func GetValue(keyValues []*KeyValues, keyID, itemID string) (ret *Value) {
 	for _, kv := range keyValues {
 		if kv.Key.ID == keyID {
@@ -236,6 +226,17 @@ type View struct {
 	GroupFolded  bool       `json:"groupFolded"`         // 分组是否折叠
 	GroupHidden  int        `json:"groupHidden"`         // 分组是否隐藏，0：显示，1：空白隐藏，2：手动隐藏
 	GroupSort    int        `json:"groupSort"`           // 分组排序值，用于手动排序
+}
+
+// ViewData 用于序列化视图数据到前端。
+type ViewData struct {
+	ID               string     `json:"id"`
+	Icon             string     `json:"icon"`
+	Name             string     `json:"name"`
+	Desc             string     `json:"desc"`
+	HideAttrViewName bool       `json:"hideAttrViewName"`
+	Type             LayoutType `json:"type"`
+	PageSize         int        `json:"pageSize"`
 }
 
 func (view *View) IsGroupView() bool {
@@ -518,7 +519,7 @@ func ParseAttributeViewByPath(avJSONPath string) (ret *AttributeView, err error)
 	ret = &AttributeView{RenderedViewables: map[string]Viewable{}}
 	if err = gulu.JSON.UnmarshalJSON(data, ret); err != nil {
 		if strings.Contains(err.Error(), ".relation.contents of type av.Value") {
-			mapAv := map[string]interface{}{}
+			mapAv := map[string]any{}
 			if err = gulu.JSON.UnmarshalJSON(data, &mapAv); err != nil {
 				logging.LogErrorf("unmarshal attribute view [%s] failed: %s", avID, err)
 				return
@@ -526,30 +527,30 @@ func ParseAttributeViewByPath(avJSONPath string) (ret *AttributeView, err error)
 
 			// v3.0.3 兼容之前旧版本，将 relation.contents[""] 转换为 null
 			keyValues := mapAv["keyValues"]
-			keyValuesMap := keyValues.([]interface{})
+			keyValuesMap := keyValues.([]any)
 			for _, kv := range keyValuesMap {
-				kvMap := kv.(map[string]interface{})
+				kvMap := kv.(map[string]any)
 				if values := kvMap["values"]; nil != values {
-					valuesMap := values.([]interface{})
+					valuesMap := values.([]any)
 					for _, v := range valuesMap {
-						if vMap := v.(map[string]interface{}); nil != vMap["relation"] {
-							vMap["relation"].(map[string]interface{})["contents"] = nil
+						if vMap := v.(map[string]any); nil != vMap["relation"] {
+							vMap["relation"].(map[string]any)["contents"] = nil
 						}
 					}
 				}
 			}
 
 			views := mapAv["views"]
-			viewsMap := views.([]interface{})
+			viewsMap := views.([]any)
 			for _, view := range viewsMap {
-				if table := view.(map[string]interface{})["table"]; nil != table {
-					tableMap := table.(map[string]interface{})
+				if table := view.(map[string]any)["table"]; nil != table {
+					tableMap := table.(map[string]any)
 					if filters := tableMap["filters"]; nil != filters {
-						filtersMap := filters.([]interface{})
+						filtersMap := filters.([]any)
 						for _, f := range filtersMap {
-							if fMap := f.(map[string]interface{}); nil != fMap["value"] {
-								if valueMap := fMap["value"].(map[string]interface{}); nil != valueMap["relation"] {
-									valueMap["relation"].(map[string]interface{})["contents"] = nil
+							if fMap := f.(map[string]any); nil != fMap["value"] {
+								if valueMap := fMap["value"].(map[string]any); nil != valueMap["relation"] {
+									valueMap["relation"].(map[string]any)["contents"] = nil
 								}
 							}
 						}
@@ -587,22 +588,24 @@ func SaveAttributeView(av *AttributeView) (err error) {
 
 	// 值去重
 	blockValues := av.GetBlockKeyValues()
-	blockIDs := map[string]bool{}
-	var duplicatedValueIDs []string
-	for _, blockValue := range blockValues.Values {
-		if !blockIDs[blockValue.BlockID] {
-			blockIDs[blockValue.BlockID] = true
-		} else {
-			duplicatedValueIDs = append(duplicatedValueIDs, blockValue.ID)
+	if nil != blockValues {
+		blockIDs := map[string]bool{}
+		var duplicatedValueIDs []string
+		for _, blockValue := range blockValues.Values {
+			if !blockIDs[blockValue.BlockID] {
+				blockIDs[blockValue.BlockID] = true
+			} else {
+				duplicatedValueIDs = append(duplicatedValueIDs, blockValue.ID)
+			}
 		}
-	}
-	var tmp []*Value
-	for _, blockValue := range blockValues.Values {
-		if !gulu.Str.Contains(blockValue.ID, duplicatedValueIDs) {
-			tmp = append(tmp, blockValue)
+		var tmp []*Value
+		for _, blockValue := range blockValues.Values {
+			if !gulu.Str.Contains(blockValue.ID, duplicatedValueIDs) {
+				tmp = append(tmp, blockValue)
+			}
 		}
+		blockValues.Values = tmp
 	}
-	blockValues.Values = tmp
 
 	// 视图值去重
 	for _, view := range av.Views {

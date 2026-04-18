@@ -25,11 +25,13 @@ import {insertHTML} from "./insertHTML";
 import {isBrowser} from "../../util/functions";
 import {hideElements} from "../ui/hideElements";
 import {insertAttrViewBlockAnimation} from "../render/av/row";
-import {dragUpload} from "../render/av/asset";
 import * as dayjs from "dayjs";
 import {setFold, zoomOut} from "../../menus/protyle";
 /// #if !BROWSER
 import {webUtils} from "electron";
+import {dragUpload} from "../render/av/asset";
+/// #else
+import {uploadFiles} from "../upload";
 /// #endif
 import {addDragFill, getTypeByCellElement} from "../render/av/cell";
 import {processClonePHElement} from "../render/util";
@@ -137,8 +139,8 @@ const moveTo = async (protyle: IProtyle, sourceElements: Element[], targetElemen
                 newSourceElements.push(copyElement);
             }
         } else {
-            const topSourceElement = getTopAloneElement(item);
-            const oldSourceParentElement = item.parentElement;
+            let topSourceElement = getTopAloneElement(item);
+            const oldSourceParentElement = getParentBlock(item);
             if (item.classList.contains("li") && item.getAttribute("data-subtype") === "o") {
                 orderListElements[item.parentElement.getAttribute("data-node-id")] = item.parentElement;
             }
@@ -161,7 +163,10 @@ const moveTo = async (protyle: IProtyle, sourceElements: Element[], targetElemen
             }
 
             if (topSourceElement !== item) {
-                // 删除空元素
+                if (topSourceElement.contains(item)) {
+                    topSourceElement = getTopAloneElement(oldSourceParentElement);
+                }
+                // 拖拽后剩下空元素
                 doOperations.push({
                     action: "delete",
                     id: topSourceElement.getAttribute("data-node-id"),
@@ -568,7 +573,11 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                 target.parentElement.classList.add("protyle-wysiwyg--select");
                 const ghostElement = document.createElement("div");
                 ghostElement.className = protyle.wysiwyg.element.className;
-                ghostElement.append(processClonePHElement(target.parentElement.cloneNode(true) as Element));
+                const cloneElement = processClonePHElement(target.parentElement.cloneNode(true) as Element);
+                cloneElement.querySelectorAll(".iframe").forEach(item => {
+                    item.remove();
+                });
+                ghostElement.append(cloneElement);
                 ghostElement.setAttribute("style", `position:fixed;opacity:.1;width:${target.parentElement.clientWidth}px;padding:0;`);
                 document.body.append(ghostElement);
                 event.dataTransfer.setDragImage(ghostElement, 0, 0);
@@ -1147,14 +1156,16 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                 }
                 targetElement.classList.remove("dragover__bottom", "dragover__top", "dragover__left", "dragover__right");
             }
-        } else if (!window.siyuan.dragElement && (event.dataTransfer.types[0] === "Files" || event.dataTransfer.types.includes("text/html"))) {
+        } else if (!window.siyuan.dragElement && (
+            event.dataTransfer.types.includes("Files") || event.dataTransfer.types.includes("text/html")
+        )) {
             event.preventDefault();
             // 外部文件拖入编辑器中或者编辑器内选中文字拖拽
             // https://github.com/siyuan-note/siyuan/issues/9544
             const avElement = hasClosestByClassName(event.target, "av");
             if (!avElement) {
                 focusByRange(getRangeByPoint(event.clientX, event.clientY));
-                if (event.dataTransfer.types[0] === "Files" && !isBrowser()) {
+                if (event.dataTransfer.types.includes("Files") && !isBrowser()) {
                     const files: ILocalFiles[] = [];
                     for (let i = 0; i < event.dataTransfer.files.length; i++) {
                         files.push({
@@ -1170,7 +1181,8 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
             } else {
                 const cellElement = hasClosestByClassName(event.target, "av__cell");
                 if (cellElement) {
-                    if (getTypeByCellElement(cellElement) === "mAsset" && event.dataTransfer.types[0] === "Files" && !isBrowser()) {
+                    if (getTypeByCellElement(cellElement) === "mAsset" && event.dataTransfer.types[0] === "Files") {
+                        /// #if !BROWSER
                         const files: ILocalFiles[] = [];
                         for (let i = 0; i < event.dataTransfer.files.length; i++) {
                             files.push({
@@ -1179,7 +1191,10 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                             });
                         }
                         dragUpload(files, protyle, cellElement);
-                        clearSelect(["cell"], avElement);
+                        /// #else
+                        focusBlock(hasClosestBlock(cellElement) as HTMLElement);
+                        uploadFiles(protyle, event.dataTransfer.files, undefined);
+                        /// #endif
                     }
                 }
             }
@@ -1308,6 +1323,14 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                     targetElement = document.elementFromPoint(point.x, point.y - 6) as HTMLElement;
                 }
                 targetElement = hasTopClosestByAttribute(targetElement, "data-node-id", null);
+                if (targetElement && targetElement.classList.contains("sb") && targetElement.getAttribute("data-sb-layout") === "col") {
+                    const childElement = targetElement.querySelectorAll("[data-node-id]");
+                    if (point.className === "dragover__left") {
+                        targetElement = childElement[0] as HTMLElement;
+                    } else {
+                        targetElement = childElement[childElement.length - 1] as HTMLElement;
+                    }
+                }
             }
         } else if (targetElement && targetElement.classList.contains("list")) {
             if (gutterTypes[0] !== "nodelistitem") {
@@ -1474,7 +1497,9 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                 return;
             }
 
-            if (event.clientX < nodeRect.left + 32 && event.clientX >= nodeRect.left - 1 &&
+            // 减小两个列表之间左侧间距，以便拖拽到其中 https://github.com/siyuan-note/siyuan/issues/15672
+            if (event.clientX < nodeRect.left + (targetElement.classList.contains("list") ? 8 : 32) &&
+                event.clientX >= nodeRect.left - 1 &&
                 !targetElement.classList.contains("av__row")) {
                 targetElement.classList.add("dragover__left");
                 addDragover(targetElement);
@@ -1567,7 +1592,10 @@ export const dropEvent = (protyle: IProtyle, editorElement: HTMLElement) => {
                 // 列表项不能拖入列表项中第一个元素之上
                 disabledPosition = "top";
             }
-            if (gutterTypes[0] === "nodelistitem" && targetElement.nextElementSibling?.classList.contains("list")) {
+            if (gutterTypes[0] === "nodelistitem" &&
+                targetElement.nextElementSibling?.classList.contains("list") &&
+                // https://github.com/siyuan-note/siyuan/issues/15672
+                targetElement.parentElement?.classList.contains("li")) {
                 // 列表项不能拖入列表上方块的下面
                 disabledPosition = "bottom";
             }

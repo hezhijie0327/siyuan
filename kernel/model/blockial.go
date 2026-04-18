@@ -19,7 +19,6 @@ package model
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
@@ -63,7 +62,7 @@ func SetBlockReminder(id string, timed string) (err error) {
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		return fmt.Errorf(Conf.Language(15), id)
 	}
 
 	if ast.NodeDocument != node.Type && node.IsContainerBlock() {
@@ -99,7 +98,7 @@ func SetBlockReminder(id string, timed string) (err error) {
 	return
 }
 
-func BatchSetBlockAttrs(blockAttrs []map[string]interface{}) (err error) {
+func BatchSetBlockAttrs(blockAttrs []map[string]any) (err error) {
 	if util.ReadOnly {
 		return
 	}
@@ -117,12 +116,12 @@ func BatchSetBlockAttrs(blockAttrs []map[string]interface{}) (err error) {
 		id := blockAttr["id"].(string)
 		tree := trees[id]
 		if nil == tree {
-			return errors.New(fmt.Sprintf(Conf.Language(15), id))
+			return fmt.Errorf(Conf.Language(15), id)
 		}
 
 		node := treenode.GetNodeInTree(tree, id)
 		if nil == node {
-			return errors.New(fmt.Sprintf(Conf.Language(15), id))
+			return fmt.Errorf(Conf.Language(15), id)
 		}
 
 		attrs := blockAttr["attrs"].(map[string]string)
@@ -132,7 +131,7 @@ func BatchSetBlockAttrs(blockAttrs []map[string]interface{}) (err error) {
 		}
 
 		cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
-		pushBroadcastAttrTransactions(oldAttrs, node)
+		pushBlockAttrs(oldAttrs, node)
 		nodes = append(nodes, node)
 	}
 
@@ -161,7 +160,7 @@ func SetBlockAttrs(id string, nameValues map[string]string) (err error) {
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		return fmt.Errorf(Conf.Language(15), id)
 	}
 
 	err = setNodeAttrs(node, tree, nameValues)
@@ -181,7 +180,7 @@ func setNodeAttrs(node *ast.Node, tree *parse.Tree, nameValues map[string]string
 	IncSync()
 	cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
 
-	pushBroadcastAttrTransactions(oldAttrs, node)
+	pushBlockAttrs(oldAttrs, node)
 
 	go func() {
 		sql.FlushQueue()
@@ -200,13 +199,13 @@ func setNodeAttrsWithTx(tx *Transaction, node *ast.Node, tree *parse.Tree, nameV
 
 	IncSync()
 	cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
-	pushBroadcastAttrTransactions(oldAttrs, node)
+	pushBlockAttrs(oldAttrs, node)
 	return
 }
 
 func setNodeAttrs0(node *ast.Node, nameValues map[string]string) (oldAttrs map[string]string, err error) {
 	oldAttrs = parse.IAL2Map(node.KramdownIAL)
-	newAttrs := maps.Clone(oldAttrs)
+	newAttrsUnEsc := parse.IAL2MapUnEsc(node.KramdownIAL)
 
 	for name, value := range nameValues {
 		value = util.RemoveInvalidRetainCtrl(value)
@@ -217,12 +216,16 @@ func setNodeAttrs0(node *ast.Node, nameValues map[string]string) (oldAttrs map[s
 			err = errors.New(Conf.Language(25) + " [" + node.ID + "]")
 			return
 		}
+		if lowerName == "data-task" {
+			err = errors.New(`setting or removing [data-task] attribute is not allowed via this interface. Please use "/api/block/updateTaskListItemMarker" or "/api/block/batchUpdateTaskListItemMarker" to update the task list item marker`)
+			return
+		}
 
 		// 处理文档标签 https://github.com/siyuan-note/siyuan/issues/13311
 		if lowerName == "tags" {
 			var tags []string
-			tmp := strings.Split(value, ",")
-			for _, t := range tmp {
+			tmp := strings.SplitSeq(value, ",")
+			for t := range tmp {
 				t = strings.TrimSpace(t)
 				if "" != t {
 					tags = append(tags, t)
@@ -239,43 +242,28 @@ func setNodeAttrs0(node *ast.Node, nameValues map[string]string) (oldAttrs map[s
 		if "" == value {
 			// 删除属性
 			if name != lowerName {
-				if _, exists := newAttrs[name]; exists {
+				if _, exists := newAttrsUnEsc[name]; exists {
 					// 仅删除完全匹配的包含大写字母的属性
-					delete(newAttrs, name)
+					delete(newAttrsUnEsc, name)
 					continue
 				}
 			}
-			delete(newAttrs, lowerName)
+			delete(newAttrsUnEsc, lowerName)
 		} else {
 			// 添加或更新属性
 			// 删除大小写完全匹配的属性
-			delete(newAttrs, name)
+			delete(newAttrsUnEsc, name)
 			// 保存小写的属性 https://github.com/siyuan-note/siyuan/issues/16447
-			newAttrs[lowerName] = html.EscapeAttrVal(value)
+			newAttrsUnEsc[lowerName] = html.EscapeAttrVal(value)
 		}
 	}
 
-	node.KramdownIAL = parse.Map2IAL(newAttrs)
+	node.KramdownIAL = parse.Map2IAL(newAttrsUnEsc)
 
-	if oldAttrs["tags"] != newAttrs["tags"] {
+	if html.EscapeAttrVal(oldAttrs["tags"]) != newAttrsUnEsc["tags"] {
 		ReloadTag()
 	}
 	return
-}
-
-func pushBroadcastAttrTransactions(oldAttrs map[string]string, node *ast.Node) {
-	newAttrs := parse.IAL2Map(node.KramdownIAL)
-	data := map[string]interface{}{"old": oldAttrs, "new": newAttrs}
-	if "" != node.AttributeViewType {
-		data["data-av-type"] = node.AttributeViewType
-	}
-	doOp := &Operation{Action: "updateAttrs", Data: data, ID: node.ID}
-	evt := util.NewCmdResult("transactions", 0, util.PushModeBroadcast)
-	evt.Data = []*Transaction{{
-		DoOperations:   []*Operation{doOp},
-		UndoOperations: []*Operation{},
-	}}
-	util.PushEvent(evt)
 }
 
 func ResetBlockAttrs(id string, nameValues map[string]string) (err error) {
@@ -292,7 +280,7 @@ func ResetBlockAttrs(id string, nameValues map[string]string) (err error) {
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		return errors.New(fmt.Sprintf(Conf.Language(15), id))
+		return fmt.Errorf(Conf.Language(15), id)
 	}
 
 	oldAttrs := parse.IAL2Map(node.KramdownIAL)
@@ -310,7 +298,7 @@ func ResetBlockAttrs(id string, nameValues map[string]string) (err error) {
 	IncSync()
 	cache.PutBlockIAL(node.ID, parse.IAL2Map(node.KramdownIAL))
 
-	pushBroadcastAttrTransactions(oldAttrs, node)
+	pushBlockAttrs(oldAttrs, node)
 
 	go func() {
 		sql.FlushQueue()
@@ -362,4 +350,19 @@ func validateChars(name string, startIdx, n int) bool {
 		}
 	}
 	return true
+}
+
+func pushBlockAttrs(oldAttrs map[string]string, node *ast.Node) {
+	newAttrs := parse.IAL2Map(node.KramdownIAL)
+	data := map[string]any{"old": oldAttrs, "new": newAttrs}
+	if "" != node.AttributeViewType {
+		data["data-av-type"] = node.AttributeViewType
+	}
+	doOp := &Operation{Action: "updateAttrs", Data: data, ID: node.ID, RootID: treenode.TreeRoot(node).ID}
+	evt := util.NewCmdResult("transactions", 0, util.PushModeBroadcast)
+	evt.Data = []*Transaction{{
+		DoOperations:   []*Operation{doOp},
+		UndoOperations: []*Operation{},
+	}}
+	util.PushEvent(evt)
 }

@@ -565,12 +565,12 @@ func (value *Value) filter(other *Value, relativeDate, relativeDate2 *RelativeDa
 				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(relativeDate.Count, relativeDate.Unit, relativeDate.Direction)
 				relativeTimeStart2, relativeTimeEnd2 := calcRelativeTimeRegion(relativeDate2.Count, relativeDate2.Unit, relativeDate2.Direction)
 				return filterRelativeTime(value.Date.Content, value.Date.IsNotEmpty, operator, relativeTimeStart, relativeTimeEnd, relativeDate.Direction, relativeTimeStart2, relativeTimeEnd2, relativeDate2.Direction)
-			} else { // 使用具体时间比较
-				if nil == other.Date {
-					return true
-				}
-				return filterTime(value.Date.Content, value.Date.IsNotEmpty, other.Date.Content, other.Date.Content2, operator)
 			}
+			// 使用具体时间比较
+			if nil == other.Date {
+				return true
+			}
+			return filterTime(value.Date.Content, value.Date.IsNotEmpty, other.Date.Content, other.Date.Content2, operator)
 		}
 	case KeyTypeCreated:
 		if nil != value.Created {
@@ -578,12 +578,12 @@ func (value *Value) filter(other *Value, relativeDate, relativeDate2 *RelativeDa
 				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(relativeDate.Count, relativeDate.Unit, relativeDate.Direction)
 				relativeTimeStart2, relativeTimeEnd2 := calcRelativeTimeRegion(relativeDate2.Count, relativeDate2.Unit, relativeDate2.Direction)
 				return filterRelativeTime(value.Created.Content, true, operator, relativeTimeStart, relativeTimeEnd, relativeDate.Direction, relativeTimeStart2, relativeTimeEnd2, relativeDate2.Direction)
-			} else { // 使用具体时间比较
-				if nil == other.Created {
-					return true
-				}
-				return filterTime(value.Created.Content, value.Created.IsNotEmpty, other.Created.Content, other.Created.Content2, operator)
 			}
+			// 使用具体时间比较
+			if nil == other.Created {
+				return true
+			}
+			return filterTime(value.Created.Content, value.Created.IsNotEmpty, other.Created.Content, other.Created.Content2, operator)
 		}
 	case KeyTypeUpdated:
 		if nil != value.Updated {
@@ -591,13 +591,13 @@ func (value *Value) filter(other *Value, relativeDate, relativeDate2 *RelativeDa
 				relativeTimeStart, relativeTimeEnd := calcRelativeTimeRegion(relativeDate.Count, relativeDate.Unit, relativeDate.Direction)
 				relativeTimeStart2, relativeTimeEnd2 := calcRelativeTimeRegion(relativeDate2.Count, relativeDate2.Unit, relativeDate2.Direction)
 				return filterRelativeTime(value.Updated.Content, true, operator, relativeTimeStart, relativeTimeEnd, relativeDate.Direction, relativeTimeStart2, relativeTimeEnd2, relativeDate2.Direction)
-			} else { // 使用具体时间比较
-				if nil == other.Updated {
-					return true
-				}
-
-				return filterTime(value.Updated.Content, value.Updated.IsNotEmpty, other.Updated.Content, other.Updated.Content2, operator)
 			}
+			// 使用具体时间比较
+			if nil == other.Updated {
+				return true
+			}
+
+			return filterTime(value.Updated.Content, value.Updated.IsNotEmpty, other.Updated.Content, other.Updated.Content2, operator)
 		}
 	case KeyTypeSelect, KeyTypeMSelect:
 		if nil != value.MSelect {
@@ -978,10 +978,10 @@ func calcRelativeTimeRegion(count int, unit RelativeDateUnit, direction Relative
 			// 结束时间：本周的周日
 			end = time.Date(now.Year(), now.Month(), now.Day()-weekday+7, 23, 59, 59, 999999999, now.Location())
 		case RelativeDateDirectionAfter:
-			//  开始时间：本周的周日
-			start = time.Date(now.Year(), now.Month(), now.Day()-weekday+7, 23, 59, 59, 999999999, now.Location())
-			// 结束时间：开始时间加上 count*7 天
-			end = start.AddDate(0, 0, count*7)
+			// 开始时间：本周的周一加上 count*7 天
+			start = time.Date(now.Year(), now.Month(), now.Day()-weekday+1, 0, 0, 0, 0, now.Location()).AddDate(0, 0, count*7)
+			// 结束时间：开始时间的周日
+			end = time.Date(start.Year(), start.Month(), start.Day()-int(start.Weekday())+7, 23, 59, 59, 999999999, now.Location())
 		}
 	case RelativeDateUnitMonth:
 		switch direction {
@@ -996,10 +996,10 @@ func calcRelativeTimeRegion(count int, unit RelativeDateUnit, direction Relative
 			// 结束时间：下个月的 1 号减去 1 纳秒
 			end = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
 		case RelativeDateDirectionAfter:
-			// 开始时间：下个月的 1 号减去 1 纳秒
-			start = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
-			// 结束时间：开始时间加上 count 个月
-			end = start.AddDate(0, count, 0)
+			// 开始时间：count 个月后的 1 号
+			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, count, 0)
+			// 结束时间：开始时间的下个月的 1 号减去 1 纳秒
+			end = time.Date(start.Year(), start.Month()+1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
 		}
 	case RelativeDateUnitYear:
 		switch direction {
@@ -1014,10 +1014,10 @@ func calcRelativeTimeRegion(count int, unit RelativeDateUnit, direction Relative
 			// 结束时间：明年的 1 月 1 号减去 1 纳秒
 			end = time.Date(now.Year()+1, 1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
 		case RelativeDateDirectionAfter:
-			// 开始时间：今年的 12 月 31 号
-			start = time.Date(now.Year(), 12, 31, 23, 59, 59, 999999999, now.Location())
-			// 结束时间：开始时间加上 count 年
-			end = start.AddDate(count, 0, 0)
+			// 开始时间：count 年后的 1 月 1 号
+			start = time.Date(now.Year(), 1, 1, 0, 0, 0, 0, now.Location()).AddDate(count, 0, 0)
+			// 结束时间：开始时间的 count+1 年的 1 月 1 号减去 1 纳秒
+			end = time.Date(start.Year()+1, 1, 1, 0, 0, 0, 0, now.Location()).Add(-time.Nanosecond)
 		}
 	}
 	return
