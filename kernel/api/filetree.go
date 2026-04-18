@@ -17,6 +17,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -148,7 +149,7 @@ func listDocTree(c *gin.Context) {
 		}
 	}
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"tree": doctree,
 	}
 }
@@ -202,7 +203,7 @@ func upsertIndexes(c *gin.Context) {
 		return
 	}
 
-	pathsArg := arg["paths"].([]interface{})
+	pathsArg := arg["paths"].([]any)
 	var paths []string
 	for _, p := range pathsArg {
 		paths = append(paths, p.(string))
@@ -219,7 +220,7 @@ func removeIndexes(c *gin.Context) {
 		return
 	}
 
-	pathsArg := arg["paths"].([]interface{})
+	pathsArg := arg["paths"].([]any)
 	var paths []string
 	for _, p := range pathsArg {
 		paths = append(paths, p.(string))
@@ -243,11 +244,11 @@ func doc2Heading(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 5000}
+		ret.Data = map[string]any{"closeTimeout": 5000}
 		return
 	}
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"srcTreeBox":  srcTreeBox,
 		"srcTreePath": srcTreePath,
 	}
@@ -276,7 +277,7 @@ func heading2Doc(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 5000}
+		ret.Data = map[string]any{"closeTimeout": 5000}
 		return
 	}
 
@@ -284,12 +285,11 @@ func heading2Doc(c *gin.Context) {
 
 	box := model.Conf.Box(targetNotebook)
 	evt := util.NewCmdResult("heading2doc", 0, util.PushModeBroadcast)
-	evt.Data = map[string]interface{}{
+	evt.Data = map[string]any{
 		"box":            box,
 		"path":           targetPath,
 		"srcRootBlockID": srcRootBlockID,
 	}
-	evt.Callback = arg["callback"]
 	util.PushEvent(evt)
 }
 
@@ -316,7 +316,7 @@ func li2Doc(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 5000}
+		ret.Data = map[string]any{"closeTimeout": 5000}
 		return
 	}
 
@@ -324,12 +324,11 @@ func li2Doc(c *gin.Context) {
 
 	box := model.Conf.Box(targetNotebook)
 	evt := util.NewCmdResult("li2doc", 0, util.PushModeBroadcast)
-	evt.Data = map[string]interface{}{
+	evt.Data = map[string]any{
 		"box":            box,
 		"path":           targetPath,
 		"srcRootBlockID": srcRootBlockID,
 	}
-	evt.Callback = arg["callback"]
 	util.PushEvent(evt)
 }
 
@@ -367,7 +366,7 @@ func getHPathsByPaths(c *gin.Context) {
 		return
 	}
 
-	pathsArg := arg["paths"].([]interface{})
+	pathsArg := arg["paths"].([]any)
 	var paths []string
 	for _, p := range pathsArg {
 		paths = append(paths, p.(string))
@@ -424,7 +423,7 @@ func getPathByID(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"path":     p,
 		"notebook": notebook,
 	}
@@ -492,7 +491,7 @@ func moveDocs(c *gin.Context) {
 	}
 
 	var fromPaths []string
-	fromPathsArg := arg["fromPaths"].([]interface{})
+	fromPathsArg := arg["fromPaths"].([]any)
 	for _, fromPath := range fromPathsArg {
 		fromPaths = append(fromPaths, fromPath.(string))
 	}
@@ -506,7 +505,7 @@ func moveDocs(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 }
@@ -540,7 +539,7 @@ func moveDocsByID(c *gin.Context) {
 		if err != nil {
 			ret.Code = -1
 			ret.Msg = err.Error()
-			ret.Data = map[string]interface{}{"closeTimeout": 7000}
+			ret.Data = map[string]any{"closeTimeout": 7000}
 			return
 		}
 		fromPaths = append(fromPaths, tree.Path)
@@ -554,7 +553,7 @@ func moveDocsByID(c *gin.Context) {
 		if nil == box {
 			ret.Code = -1
 			ret.Msg = "can't found box or tree by id [" + toID + "]"
-			ret.Data = map[string]interface{}{"closeTimeout": 7000}
+			ret.Data = map[string]any{"closeTimeout": 7000}
 			return
 		}
 	}
@@ -572,7 +571,7 @@ func moveDocsByID(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 }
@@ -613,7 +612,7 @@ func removeDocByID(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -629,7 +628,7 @@ func removeDocs(c *gin.Context) {
 		return
 	}
 
-	pathsArg := arg["paths"].([]interface{})
+	pathsArg := arg["paths"].([]any)
 	var paths []string
 	for _, path := range pathsArg {
 		paths = append(paths, path.(string))
@@ -686,7 +685,7 @@ func renameDocByID(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -712,7 +711,7 @@ func duplicateDoc(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -722,7 +721,7 @@ func duplicateDoc(c *gin.Context) {
 	arg["listDocTree"] = true
 	pushCreate(box, tree.Path, arg)
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"id":       tree.Root.ID,
 		"notebook": notebook,
 		"path":     tree.Path,
@@ -746,7 +745,7 @@ func createDoc(c *gin.Context) {
 	sortsArg := arg["sorts"]
 	var sorts []string
 	if nil != sortsArg {
-		for _, sort := range sortsArg.([]interface{}) {
+		for _, sort := range sortsArg.([]any) {
 			sorts = append(sorts, sort.(string))
 		}
 	}
@@ -755,7 +754,7 @@ func createDoc(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -763,7 +762,7 @@ func createDoc(c *gin.Context) {
 	box := model.Conf.Box(notebook)
 	pushCreate(box, p, arg)
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"id": tree.Root.ID,
 	}
 }
@@ -780,7 +779,7 @@ func createDailyNote(c *gin.Context) {
 	notebook := arg["notebook"].(string)
 	p, existed, err := model.CreateDailyNote(notebook)
 	if err != nil {
-		if model.ErrBoxNotFound == err {
+		if errors.Is(err, model.ErrBoxNotFound) {
 			ret.Code = 1
 		} else {
 			ret.Code = -1
@@ -809,15 +808,14 @@ func createDailyNote(c *gin.Context) {
 		}
 		evt := util.NewCmdResult("createdailynote", 0, util.PushModeBroadcast)
 		evt.AppId = app
-		evt.Data = map[string]interface{}{
+		evt.Data = map[string]any{
 			"box":  box,
 			"path": p,
 		}
-		evt.Callback = arg["callback"]
 		util.PushEvent(evt)
 	}
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"id": tree.Root.ID,
 	}
 }
@@ -943,7 +941,7 @@ func getDocCreateSavePath(c *gin.Context) {
 		return
 	}
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"box":  docCreateSaveBox,
 		"path": docCreateSavePath,
 	}
@@ -996,7 +994,7 @@ func getRefCreateSavePath(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"box":  refCreateSaveBox,
 		"path": refCreateSavePath,
 	}
@@ -1012,7 +1010,7 @@ func changeSort(c *gin.Context) {
 	}
 
 	notebook := arg["notebook"].(string)
-	pathsArg := arg["paths"].([]interface{})
+	pathsArg := arg["paths"].([]any)
 	var paths []string
 	for _, p := range pathsArg {
 		paths = append(paths, p.(string))
@@ -1036,7 +1034,7 @@ func searchDocs(c *gin.Context) {
 
 	var excludeIDs []string
 	if arg["excludeIDs"] != nil {
-		excludeIDsArg := arg["excludeIDs"].([]interface{})
+		excludeIDsArg := arg["excludeIDs"].([]any)
 		for _, excludeID := range excludeIDsArg {
 			excludeIDs = append(excludeIDs, excludeID.(string))
 		}
@@ -1085,6 +1083,18 @@ func listDocsByPath(c *gin.Context) {
 		ret.Msg = err.Error()
 		return
 	}
+	// 过滤掉发布不可见的文件
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetInvisiblePublishAccess(publishAccess)
+		tempFiles := []*model.File{}
+		for _, file := range files {
+			if model.CheckPathAccessableByPublishIgnore(notebook, file.Path, publishIgnore) {
+				tempFiles = append(tempFiles, file)
+			}
+		}
+		files = tempFiles
+	}
 	if maxListCount < totals {
 		// API `listDocsByPath` add an optional parameter `ignoreMaxListHint` https://github.com/siyuan-note/siyuan/issues/10290
 		ignoreMaxListHintArg := arg["ignoreMaxListHint"]
@@ -1097,7 +1107,7 @@ func listDocsByPath(c *gin.Context) {
 		}
 	}
 
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"box":   notebook,
 		"path":  p,
 		"files": files,
@@ -1130,7 +1140,7 @@ func getDoc(c *gin.Context) {
 	}
 	var queryTypes map[string]bool
 	if queryTypesArg := arg["queryTypes"]; nil != queryTypesArg {
-		typesArg := queryTypesArg.(map[string]interface{})
+		typesArg := queryTypesArg.(map[string]any)
 		queryTypes = map[string]bool{}
 		for t, b := range typesArg {
 			queryTypes[t] = b.(bool)
@@ -1164,7 +1174,7 @@ func getDoc(c *gin.Context) {
 	originalRefBlockIDsArg := arg["originalRefBlockIDs"]
 	originalRefBlockIDs := map[string]string{}
 	if nil != originalRefBlockIDsArg {
-		m := originalRefBlockIDsArg.(map[string]interface{})
+		m := originalRefBlockIDsArg.(map[string]any)
 		for k, v := range m {
 			originalRefBlockIDs[k] = v.(string)
 		}
@@ -1177,7 +1187,7 @@ func getDoc(c *gin.Context) {
 
 	blockCount, content, parentID, parent2ID, rootID, typ, eof, scroll, boxID, docPath, isBacklinkExpand, keywords, err :=
 		model.GetDoc(startID, endID, id, index, query, queryTypes, queryMethod, mode, size, isBacklink, originalRefBlockIDs, highlight)
-	if model.ErrBlockNotFound == err {
+	if errors.Is(err, model.ErrBlockNotFound) {
 		ret.Code = 3
 		return
 	}
@@ -1191,7 +1201,16 @@ func getDoc(c *gin.Context) {
 	// 判断是否正在同步中 https://github.com/siyuan-note/siyuan/issues/6290
 	isSyncing := model.IsSyncingFile(rootID)
 
-	ret.Data = map[string]interface{}{
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		newContent := model.FilterContentByPublishAccess(c, publishAccess, boxID, docPath, content, false)
+		if newContent != content {
+			content = newContent
+			scroll = false // 避免长页面可通过滚动无限刷出多个锁
+		}
+	}
+
+	ret.Data = map[string]any{
 		"id":               id,
 		"mode":             mode,
 		"parentID":         parentID,
@@ -1211,7 +1230,7 @@ func getDoc(c *gin.Context) {
 	}
 }
 
-func pushCreate(box *model.Box, p string, arg map[string]interface{}) {
+func pushCreate(box *model.Box, p string, arg map[string]any) {
 	evt := util.NewCmdResult("create", 0, util.PushModeBroadcast)
 	listDocTree := false
 	listDocTreeArg := arg["listDocTree"]
@@ -1219,11 +1238,134 @@ func pushCreate(box *model.Box, p string, arg map[string]interface{}) {
 		listDocTree = listDocTreeArg.(bool)
 	}
 
-	evt.Data = map[string]interface{}{
+	evt.Data = map[string]any{
 		"box":         box,
 		"path":        p,
 		"listDocTree": listDocTree,
 	}
-	evt.Callback = arg["callback"]
 	util.PushEvent(evt)
+}
+
+func setPublishAccess(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, ok := util.JsonArg(c, ret)
+	if !ok {
+		return
+	}
+
+	publishAccess := model.GetPublishAccess()
+	ID := arg["id"].(string)
+	visible := arg["visible"].(bool)
+	password := arg["password"].(string)
+	disable := arg["disable"].(bool)
+
+	foundIndex := -1
+	updated := false
+	for i, item := range publishAccess {
+		if ID == item.ID {
+			foundIndex = i
+			break
+		}
+	}
+	if foundIndex >= 0 {
+		if visible && len(password) == 0 && !disable {
+			publishAccess = append(publishAccess[:foundIndex], publishAccess[foundIndex+1:]...)
+		} else {
+			publishAccess[foundIndex].Visible = visible
+			publishAccess[foundIndex].Password = password
+			publishAccess[foundIndex].Disable = disable
+		}
+		updated = true
+	} else {
+		if !visible || len(password) != 0 || disable {
+			publishAccess = append(publishAccess, &model.PublishAccessItem{
+				ID:       ID,
+				Visible:  visible,
+				Password: password,
+				Disable:  disable,
+			})
+			updated = true
+		}
+	}
+
+	if updated {
+		err := model.SetPublishAccess(publishAccess)
+		if err != nil {
+			ret.Code = -1
+			ret.Msg = err.Error()
+			return
+		}
+	}
+
+	model.PurgePublishAccess()
+}
+
+func getPublishAccess(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, ok := util.JsonArg(c, ret)
+	if !ok {
+		return
+	}
+
+	var IDs []string
+	for _, ID := range arg["ids"].([]any) {
+		IDs = append(IDs, ID.(string))
+	}
+
+	publishAccess := model.GetPublishAccess()
+	maskedPublishAccess := model.PublishAccess{}
+	for _, ID := range IDs {
+		found := false
+		for _, item := range publishAccess {
+			if item.ID == ID {
+				found = true
+				maskedPublishAccess = append(maskedPublishAccess, item)
+				break
+			}
+		}
+		if !found {
+			maskedPublishAccess = append(maskedPublishAccess, &model.PublishAccessItem{
+				ID:       ID,
+				Visible:  true,
+				Password: "",
+				Disable:  false,
+			})
+		}
+	}
+
+	ret.Data = map[string]any{
+		"publishAccess": maskedPublishAccess,
+	}
+}
+
+func authFilePublishAccess(c *gin.Context) {
+	ret := gulu.Ret.NewResult()
+	defer c.JSON(http.StatusOK, ret)
+
+	arg, ok := util.JsonArg(c, ret)
+	if !ok {
+		return
+	}
+
+	ID := arg["id"].(string)
+	if util.InvalidIDPattern(ID, ret) {
+		return
+	}
+	password := arg["password"].(string)
+
+	publishAccess := model.GetPublishAccess()
+	for _, item := range publishAccess {
+		if item.ID == ID {
+			if item.Password == password {
+				model.SetPublishAuthCookie(c, ID, password)
+			} else {
+				ret.Msg = model.Conf.Language(285)
+			}
+			break
+		}
+	}
 }

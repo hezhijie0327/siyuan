@@ -6,8 +6,6 @@ declare const NODE_ENV: string;
 const _SIYUAN_VERSION = SIYUAN_VERSION;
 const _NODE_ENV = NODE_ENV;
 
-const altNumber = navigator.platform.toUpperCase().indexOf("MAC") > -1 ? "⌃" : "⌥";
-
 const getFunctionKey = () => {
     const fData: { [key: number]: string } = {};
     for (let i = 1; i <= 32; i++) {
@@ -42,6 +40,7 @@ export abstract class Constants {
     public static readonly SIYUAN_QUIT: string = "siyuan-quit";
     public static readonly SIYUAN_HOTKEY: string = "siyuan-hotkey";
     public static readonly SIYUAN_INIT: string = "siyuan-init";
+    public static readonly SIYUAN_READY_TO_SHOW: string = "siyuan-ready-to-show";
     public static readonly SIYUAN_SEND_WINDOWS: string = "siyuan-send-windows"; // 主窗口和各新窗口之间的通信，{cmd: "closetab"|"lockscreen"|"lockscreenByMode", data: {}})
     public static readonly SIYUAN_SAVE_CLOSE: string = "siyuan-save-close";
     public static readonly SIYUAN_AUTO_LAUNCH: string = "siyuan-auto-launch";
@@ -61,11 +60,12 @@ export abstract class Constants {
     public static readonly SIYUAN_SHOW_WINDOW: string = "siyuan-show-window";
 
     // custom
+    public static readonly CUSTOM_REMINDER_WECHAT: string = "custom-reminder-wechat";
+    public static readonly CUSTOM_RIFF_DECKS: string = "custom-riff-decks";
     public static readonly CUSTOM_SY_READONLY: string = "custom-sy-readonly";
     public static readonly CUSTOM_SY_FULLWIDTH: string = "custom-sy-fullwidth";
     public static readonly CUSTOM_SY_AV_VIEW: string = "custom-sy-av-view";
-    public static readonly CUSTOM_REMINDER_WECHAT: string = "custom-reminder-wechat";
-    public static readonly CUSTOM_RIFF_DECKS: string = "custom-riff-decks";
+    public static readonly CUSTOM_SY_TITLE_EMPTY: string = "custom-sy-title-empty";
 
     // size
     public static readonly SIZE_DATABASE_MAZ_SIZE: number = 102400;
@@ -120,7 +120,6 @@ export abstract class Constants {
 
     // ws callback
     public static readonly CB_MOVE_NOLIST = "cb-move-nolist";
-    public static readonly CB_MOUNT_REMOVE = "cb-mount-remove";
     public static readonly CB_GET_APPEND = "cb-get-append"; // 向下滚动加载
     public static readonly CB_GET_BEFORE = "cb-get-before"; // 向上滚动加载
     public static readonly CB_GET_UNCHANGEID = "cb-get-unchangeid"; // 上下滚动，定位时不修改 blockid
@@ -139,6 +138,7 @@ export abstract class Constants {
     public static readonly CB_GET_HTML = "cb-get-html"; // 直接渲染，不需要再 /api/block/getDocInfo，否则搜索表格无法定位
     public static readonly CB_GET_HISTORY = "cb-get-history"; // 历史渲染
     public static readonly CB_GET_OPENNEW = "cb-get-opennew"; // 编辑器只读后新建文件需为临时解锁状态 & https://github.com/siyuan-note/siyuan/issues/12197
+    public static readonly CB_GET_AV_NO_CREATE = "cb-get-av-no-create"; // 属性视图不自动创建
 
     // localstorage
     public static readonly LOCAL_ZOOM = "local-zoom";
@@ -238,6 +238,7 @@ export abstract class Constants {
     public static readonly MENU_BAR_MORE = "barmore"; // 顶栏更多菜单
     public static readonly MENU_STATUS_HELP = "statusHelp"; // 状态栏帮助菜单
     public static readonly MENU_STATUS_BACKGROUND_TASK = "statusBackgroundTask"; // 状态栏后台任务菜单
+    public static readonly MENU_DOCK = "menu-dock"; // 桌面端 dock 图标菜单
     public static readonly MENU_DOCK_MOBILE = "dockMobileMenu"; // 移动端侧栏插件选项菜单
 
     public static readonly MENU_BLOCK_SINGLE = "block-single"; // 单选块菜单
@@ -317,6 +318,7 @@ export abstract class Constants {
         pl_PL: "20210808180117-6v0mkxr",
         pt_BR: "20210808180117-6v0mkxr",
         ru_RU: "20210808180117-6v0mkxr",
+        sk_SK: "20210808180117-6v0mkxr",
         tr_TR: "20210808180117-6v0mkxr",
         zh_CHT: "20211226090932-5lcq56f",
         zh_CN: "20210808180117-czj9bvb",
@@ -436,15 +438,15 @@ export abstract class Constants {
             stickSearch: {default: "⇧⌘F", custom: "⇧⌘F"},
             replace: {default: "⌘R", custom: "⌘R"},
             closeTab: {default: "⌘W", custom: "⌘W"},
-            fileTree: {default: altNumber + "1", custom: altNumber + "1"},
-            outline: {default: altNumber + "2", custom: altNumber + "2"},
-            bookmark: {default: altNumber + "3", custom: altNumber + "3"},
-            tag: {default: altNumber + "4", custom: altNumber + "4"},
-            dailyNote: {default: altNumber + "5", custom: altNumber + "5"},
-            backlinks: {default: altNumber + "7", custom: altNumber + "7"},
-            graphView: {default: altNumber + "8", custom: altNumber + "8"},
-            globalGraph: {default: altNumber + "9", custom: altNumber + "9"},
-            riffCard: {default: altNumber + "0", custom: altNumber + "0"},
+            fileTree: {default: "⌃1", custom: "⌃1"},
+            outline: {default: "⌃2", custom: "⌃2"},
+            bookmark: {default: "⌃3", custom: "⌃3"},
+            tag: {default: "⌃4", custom: "⌃4"},
+            dailyNote: {default: "⌃5", custom: "⌃5"},
+            backlinks: {default: "⌃7", custom: "⌃7"},
+            graphView: {default: "⌃8", custom: "⌃8"},
+            globalGraph: {default: "⌃9", custom: "⌃9"},
+            riffCard: {default: "⌃0", custom: "⌃0"},
             config: {default: "⌥P", custom: "⌥P"},
             dataHistory: {default: "⌥H", custom: "⌥H"},
             toggleWin: {default: "⌥M", custom: "⌥M"},
@@ -500,7 +502,7 @@ export abstract class Constants {
                 copyBlockEmbed: {default: "⇧⌘E", custom: "⇧⌘E"},
                 copyHPath: {default: "⇧⌘P", custom: "⇧⌘P"},
                 undo: {default: "⌘Z", custom: "⌘Z"},
-                redo: {default: "⌘Y", custom: "⌘Y"},
+                redo: {default: "⇧⌘Z", custom: "⇧⌘Z"},
                 rename: {default: "F2", custom: "F2"},
                 newNameFile: {default: "F3", custom: "F3"},
                 newContentFile: {default: "F4", custom: "F4"},

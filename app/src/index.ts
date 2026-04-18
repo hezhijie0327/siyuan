@@ -7,7 +7,7 @@ import {account} from "./config/account";
 import {addScript, addScriptSync} from "./protyle/util/addScript";
 import {genUUID} from "./util/genID";
 import {fetchGet, fetchPost} from "./util/fetch";
-import {addBaseURL, getIdFromSYProtocol, isSYProtocol, setNoteBook} from "./util/pathName";
+import {addBaseURL, getIdFromSYProtocol, isSYProtocol, redirectToCheckAuth, setNoteBook} from "./util/pathName";
 import {registerServiceWorker} from "./util/serviceWorker";
 import {openFileById} from "./editor/util";
 import {
@@ -24,9 +24,9 @@ import {
     transactionError
 } from "./dialog/processSystem";
 import {initMessage, showMessage} from "./dialog/message";
-import {getAllTabs} from "./layout/getAll";
+import {getAllModels, getAllTabs} from "./layout/getAll";
 import {getLocalStorage, isChromeBrowser, isInMobileApp} from "./protyle/util/compatibility";
-import {getSearch} from "./util/functions";
+import {getSearch, isBrowser} from "./util/functions";
 import {checkPublishServiceClosed} from "./util/processMessage";
 import {hideAllElements} from "./protyle/ui/hideElements";
 import {loadPlugins, reloadPlugin} from "./plugin/loader";
@@ -35,10 +35,11 @@ import {reloadEmoji} from "./emoji";
 import {processIOSPurchaseResponse} from "./util/iOSPurchase";
 /// #if BROWSER
 import {setLocalShorthandCount} from "./util/noRelyPCFunction";
+/// #else
+import {ipcRenderer} from "electron";
 /// #endif
 import {getDockByType} from "./layout/tabUtil";
 import {Tag} from "./layout/dock/Tag";
-import {updateControlAlt} from "./protyle/util/hotKey";
 import {updateAppearance} from "./config/util/updateAppearance";
 import {renderSnippet} from "./config/util/snippets";
 
@@ -75,6 +76,9 @@ export class App {
                     });
                     if (data) {
                         switch (data.cmd) {
+                            case "logoutAuth":
+                                redirectToCheckAuth();
+                                break;
                             case "setAppearance":
                                 updateAppearance(data.data);
                                 break;
@@ -116,7 +120,18 @@ export class App {
                                 break;
                             case "setConf":
                                 window.siyuan.config = data.data;
-                                updateControlAlt();
+                                break;
+                            case "setPublish":
+                                window.siyuan.config.publish = data.data;
+                                if (!window.siyuan.config.publish.enable) {
+                                    getAllModels().files.forEach(item => {
+                                        item.element.classList.remove("file-tree__publish-access--active");
+                                        item.element.querySelectorAll(".b3-list-item__icon").forEach(iconItem => {
+                                            iconItem.classList.remove("fn__none");
+                                            iconItem.nextElementSibling.classList.add("fn__none");
+                                        });
+                                    });
+                                }
                                 break;
                             case "progress":
                                 progressLoading(data);
@@ -137,7 +152,8 @@ export class App {
                                     }
                                 });
                                 break;
-                            case "unmount":
+                            case "closeBox":
+                            case "removeBox":
                                 getAllTabs().forEach((tab) => {
                                     if (tab.headElement) {
                                         const initTab = tab.headElement.getAttribute("data-initdata");
@@ -170,7 +186,7 @@ export class App {
                                 downloadProgress(data.data);
                                 break;
                             case "txerr":
-                                transactionError();
+                                transactionError(data.msg);
                                 break;
                             case "syncing":
                                 processSync(data, this.plugins);
@@ -188,6 +204,10 @@ export class App {
                             case "openFileById":
                                 openFileById({app: this, id: data.data.id, action: [Constants.CB_GET_FOCUS]});
                                 break;
+                            case "exit":
+                                if (isBrowser() && !isInMobileApp()) {
+                                    window.location.href = "about:blank";
+                                }
                         }
                     }
                 }
@@ -198,7 +218,6 @@ export class App {
             addScriptSync(`${Constants.PROTYLE_CDN}/js/lute/lute.min.js?v=${Constants.SIYUAN_VERSION}`, "protyleLuteScript");
             addScript(`${Constants.PROTYLE_CDN}/js/protyle-html.js?v=${Constants.SIYUAN_VERSION}`, "protyleWcHtmlScript");
             window.siyuan.config = response.data.conf;
-            updateControlAlt();
             window.siyuan.isPublish = response.data.isPublish;
             await loadPlugins(this);
             getLocalStorage(() => {
@@ -210,7 +229,7 @@ export class App {
                         window.siyuan.user = userResponse.data;
                         onGetConfig(response.data.start, this);
                         account.onSetaccount();
-                        setTitle(window.siyuan.languages.siyuanNote);
+                        setTitle("", true);
                         initMessage();
                         /// #if BROWSER && !MOBILE
                         if (!isInMobileApp() && !window.siyuan.config.readonly && !window.siyuan.isPublish && !isChromeBrowser()) {
@@ -247,4 +266,6 @@ window.showKeyboardToolbar = () => {
     // 防止 Pad 端报错
 };
 window.processIOSPurchaseResponse = processIOSPurchaseResponse;
+/// #else
+ipcRenderer.send(Constants.SIYUAN_READY_TO_SHOW);
 /// #endif

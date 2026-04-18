@@ -45,6 +45,7 @@ type Editor struct {
 	ListLogicalOutdent              bool           `json:"listLogicalOutdent"`              // 列表逻辑反向缩进
 	ListItemDotNumberClickFocus     bool           `json:"listItemDotNumberClickFocus"`     // 单击列表项标记聚焦
 	FloatWindowMode                 int            `json:"floatWindowMode"`                 // 浮窗触发模式，0：光标悬停，1：按住 Ctrl 悬停，2：不触发浮窗
+	FloatWindowDelay                *int           `json:"floatWindowDelay"`                // 浮窗悬停触发延迟，单位：毫秒，默认 620，nil 表示未设置
 	DynamicLoadBlocks               int            `json:"dynamicLoadBlocks"`               // 块动态数，可配置区间 [48, 1024]
 	Justify                         bool           `json:"justify"`                         // 是否两端对齐
 	RTL                             bool           `json:"rtl"`                             // 是否从右到左显示
@@ -57,6 +58,7 @@ type Editor struct {
 	BacklinkSort                    *int           `json:"backlinkSort"`                    // 反向链接排序方式
 	BackmentionSort                 *int           `json:"backmentionSort"`                 // 反链提及排序方式
 	HeadingEmbedMode                int            `json:"headingEmbedMode"`                // 标题嵌入块模式，0：显示标题与下方的块，1：仅显示标题，2：仅显示标题下方的块
+	PasteURLAutoConvert             bool           `json:"pasteURLAutoConvert"`             // 粘贴网址时自动转为链接
 	Markdown                        *util.Markdown `json:"markdown"`                        // Markdown 配置
 }
 
@@ -87,6 +89,7 @@ func NewEditor() *Editor {
 		ListLogicalOutdent:              false,
 		ListItemDotNumberClickFocus:     true,
 		FloatWindowMode:                 0,
+		FloatWindowDelay:                func() *int { v := 620; return &v }(),
 		DynamicLoadBlocks:               192,
 		Justify:                         false,
 		RTL:                             false,
@@ -98,6 +101,7 @@ func NewEditor() *Editor {
 		BacklinkSort:                    func() *int { v := util.SortModeUpdatedDESC; return &v }(),
 		BackmentionSort:                 func() *int { v := util.SortModeUpdatedDESC; return &v }(),
 		HeadingEmbedMode:                0,
+		PasteURLAutoConvert:             false,
 		Markdown:                        util.MarkdownSettings,
 	}
 }

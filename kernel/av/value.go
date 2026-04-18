@@ -381,7 +381,7 @@ func (value *Value) IsEmpty() bool {
 	return false
 }
 
-func (value *Value) SetValByType(typ KeyType, val interface{}) {
+func (value *Value) SetValByType(typ KeyType, val any) {
 	switch typ {
 	case KeyTypeBlock:
 		value.Block = val.(*ValueBlock)
@@ -418,7 +418,7 @@ func (value *Value) SetValByType(typ KeyType, val interface{}) {
 	}
 }
 
-func (value *Value) GetValByType(typ KeyType) (ret interface{}) {
+func (value *Value) GetValByType(typ KeyType) (ret any) {
 	// 单独处理汇总
 	if KeyTypeRollup == value.Type {
 		if 1 > len(value.Rollup.Contents) {
@@ -509,6 +509,7 @@ const (
 	NumberFormatSGD NumberFormat = "SGD" // 新加坡元
 	NumberFormatNZD NumberFormat = "NZD" // 新西兰元
 	NumberFormatILS NumberFormat = "ILS" // 以色列新谢克尔
+	NumberFormatSKK NumberFormat = "SKK" // 斯洛伐克克朗
 )
 
 func NewFormattedValueNumber(content float64, format NumberFormat) (ret *ValueNumber) {
@@ -605,6 +606,9 @@ func formatNumber(content float64, format NumberFormat) string {
 	case NumberFormatILS:
 		p := message.NewPrinter(language.Hebrew)
 		return p.Sprintf("ILS₪%.2f", content)
+	case NumberFormatSKK:
+		p := message.NewPrinter(language.Slovak)
+		return p.Sprintf("SKK%.2f", content)
 	default:
 		return strconv.FormatFloat(content, 'f', -1, 64)
 	}

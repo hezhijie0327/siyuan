@@ -10,7 +10,6 @@ import {openGlobalSearch} from "../../search/util";
 /// #else
 import {popSearch} from "../../mobile/menu/search";
 /// #endif
-import {getEventName} from "../util/compatibility";
 import {Dialog} from "../../dialog";
 import {Constants} from "../../constants";
 import {assetMenu} from "../../menus/protyle";
@@ -205,7 +204,7 @@ export class Background {
                 });
             });
         });
-        this.element.addEventListener(getEventName(), (event) => {
+        this.element.addEventListener("click", (event) => {
             let target = event.target as HTMLElement;
             hideElements(["gutter"], protyle);
 
@@ -263,11 +262,11 @@ export class Background {
                 } else if (type === "show-random" && !protyle.disabled) {
                     let html = "";
                     bgs.forEach((item: string, index: number) => {
-                        html += `<div data-index="${index}" style="height: 128px;${item}" class="b3-card b3-card--wrap"></div>`;
+                        html += `<div data-index="${index}" style="height: 128px;${item}" class="b3-card"></div>`;
                     });
                     const dialog = new Dialog({
                         title: window.siyuan.languages.builtIn,
-                        content: `<div class="b3-cards">${html}</div>`,
+                        content: `<div class="b3-cards" style="padding: 16px">${html}</div>`,
                         width: isMobile() ? "92vw" : "912px",
                         height: isMobile() ? "80vh" : "70vh",
                     });

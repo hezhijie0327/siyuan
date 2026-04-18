@@ -18,7 +18,6 @@ package model
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"html"
 	"regexp"
@@ -508,8 +507,8 @@ func SwapBlockRef(refID, defID string, includeChildren bool) (err error) {
 		}
 	}
 
-	refreshUpdated(defNode)
-	refreshUpdated(refNode)
+	treenode.RefreshUpdated(defNode)
+	treenode.RefreshUpdated(refNode)
 
 	refPivot := treenode.NewParagraph("")
 	refNode.InsertBefore(refPivot)
@@ -592,7 +591,7 @@ func GetHeadingDeleteTransaction(id string) (transaction *Transaction, err error
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		err = errors.New(fmt.Sprintf(Conf.Language(15), id))
+		err = fmt.Errorf(Conf.Language(15), id)
 		return
 	}
 
@@ -635,7 +634,7 @@ func GetHeadingInsertTransaction(id string) (transaction *Transaction, err error
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		err = errors.New(fmt.Sprintf(Conf.Language(15), id))
+		err = fmt.Errorf(Conf.Language(15), id)
 		return
 	}
 
@@ -765,7 +764,7 @@ func GetHeadingLevelTransaction(id string, level int) (transaction *Transaction,
 
 	node := treenode.GetNodeInTree(tree, id)
 	if nil == node {
-		err = errors.New(fmt.Sprintf(Conf.Language(15), id))
+		err = fmt.Errorf(Conf.Language(15), id)
 		return
 	}
 
@@ -1015,58 +1014,42 @@ func GetBlockKramdown(id, mode string) (ret string) {
 		return
 	}
 
-	addBlockIALNodes(tree, false)
-	node := treenode.GetNodeInTree(tree, id)
-	root := &ast.Node{Type: ast.NodeDocument}
-	root.AppendChild(node.Next) // IAL
-	root.PrependChild(node)
 	luteEngine := NewLute()
-	if "md" == mode {
-		// `/api/block/getBlockKramdown` link/image URLs are no longer encoded with spaces https://github.com/siyuan-note/siyuan/issues/15611
-		luteEngine.SetPreventEncodeLinkSpace(true)
-
-		ret = treenode.ExportNodeStdMd(root, luteEngine)
-	} else {
-		tree.Root = root
-		formatRenderer := render.NewFormatRenderer(tree, luteEngine.RenderOptions, luteEngine.ParseOptions)
-		ret = string(formatRenderer.Render())
-	}
-	return
+	return getBlockKramdown0(tree, id, mode, luteEngine)
 }
 
 func GetBlockKramdowns(ids []string, mode string) (ret map[string]string) {
-	ret = map[string]string{}
+	ret = make(map[string]string, len(ids))
 	if 0 == len(ids) {
 		return
 	}
 
 	luteEngine := NewLute()
+	for _, id := range ids {
+		// 节点会被移走，tree 不能共享，需重新加载
+		tree, err := LoadTreeByBlockID(id)
+		if err != nil {
+			continue
+		}
+		ret[id] = getBlockKramdown0(tree, id, mode, luteEngine)
+	}
+	return
+}
+
+func getBlockKramdown0(tree *parse.Tree, id, mode string, luteEngine *lute.Lute) (ret string) {
+	addBlockIALNodes(tree, false)
+	node := treenode.GetNodeInTree(tree, id)
+	root := &ast.Node{Type: ast.NodeDocument}
+	root.AppendChild(node.Next) // IAL
+	root.PrependChild(node)
 	if "md" == mode {
 		// `/api/block/getBlockKramdown` link/image URLs are no longer encoded with spaces https://github.com/siyuan-note/siyuan/issues/15611
 		luteEngine.SetPreventEncodeLinkSpace(true)
-	}
-
-	trees := filesys.LoadTrees(ids)
-	for id, tree := range trees {
-		node := treenode.GetNodeInTree(tree, id)
-		if nil == node {
-			continue
-		}
-
-		addBlockIALNodes(tree, false)
-		root := &ast.Node{Type: ast.NodeDocument}
-		root.AppendChild(node.Next) // IAL
-		root.PrependChild(node)
-
-		var kramdown string
-		if "md" == mode {
-			kramdown = treenode.ExportNodeStdMd(root, luteEngine)
-		} else {
-			tree.Root = root
-			formatRenderer := render.NewFormatRenderer(tree, luteEngine.RenderOptions, luteEngine.ParseOptions)
-			kramdown = string(formatRenderer.Render())
-		}
-		ret[id] = kramdown
+		ret = treenode.ExportNodeStdMd(root, luteEngine)
+	} else {
+		tree.Root = root
+		formatRenderer := render.NewFormatRenderer(tree, luteEngine.RenderOptions, luteEngine.ParseOptions)
+		ret = string(formatRenderer.Render())
 	}
 	return
 }

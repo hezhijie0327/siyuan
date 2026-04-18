@@ -9,6 +9,11 @@ import {newFile} from "../../util/newFile";
 import {initFileMenu, initNavigationMenu, sortMenu} from "../../menus/navigation";
 import {MenuItem} from "../../menus/Menu";
 import {showMessage} from "../../dialog/message";
+import {
+    getPublishAccessLevel,
+    getPublishAccessOptionByLevel,
+    openPublishAccessDialog
+} from "../../protyle/util/publishAccess";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {openEmojiPanel, unicode2Emoji} from "../../emoji";
 import {mountHelp, newNotebook} from "../../util/mount";
@@ -79,7 +84,8 @@ export class Files extends Model {
                                 });
                             });
                             break;
-                        case "unmount":
+                        case "closeBox":
+                        case "removeBox":
                             this.onRemove(data);
                             options.app.plugins.forEach((item) => {
                                 item.eventBus.emit("closed-notebook", data);
@@ -112,21 +118,20 @@ export class Files extends Model {
         });
         options.tab.panelElement.classList.add("fn__flex-column", "file-tree", "sy__file", "dockPanel");
         options.tab.panelElement.innerHTML = `<div class="block__icons">
-    <div class="block__logo">
+    <div class="block__logo fn__flex-1">
         <svg class="block__logoicon"><use xlink:href="#iconFiles"></use></svg>${window.siyuan.languages.fileTree}
     </div>
-    <span class="fn__flex-1 fn__space"></span>
-    <span data-type="focus" class="block__icon b3-tooltips b3-tooltips__sw" aria-label="${window.siyuan.languages.selectOpen1}${updateHotkeyAfterTip(window.siyuan.config.keymap.general.selectOpen1.custom)}"><svg><use xlink:href='#iconFocus'></use></svg></span>
+    <span data-type="focus" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.selectOpen1}${updateHotkeyAfterTip(window.siyuan.config.keymap.general.selectOpen1.custom)}"><svg><use xlink:href='#iconFocus'></use></svg></span>
     <span class="fn__space"></span>
-    <span data-type="collapse" class="block__icon b3-tooltips b3-tooltips__sw" aria-label="${window.siyuan.languages.collapse}${updateHotkeyAfterTip(window.siyuan.config.keymap.editor.general.collapse.custom)}">
+    <span data-type="collapse" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.collapse}${updateHotkeyAfterTip(window.siyuan.config.keymap.editor.general.collapse.custom)}">
         <svg><use xlink:href="#iconContract"></use></svg>
     </span>
     <div class="fn__space${window.siyuan.config.readonly ? " fn__none" : ""}"></div>
-    <div data-type="more" class="b3-tooltips b3-tooltips__sw block__icon${window.siyuan.config.readonly ? " fn__none" : ""}" aria-label="${window.siyuan.languages.more}">
+    <div data-type="more" class="ariaLabel block__icon${window.siyuan.config.readonly ? " fn__none" : ""}" data-position="north" aria-label="${window.siyuan.languages.more}">
         <svg><use xlink:href="#iconMore"></use></svg>
     </div> 
     <span class="fn__space"></span>
-    <span data-type="min" class="block__icon b3-tooltips b3-tooltips__sw" aria-label="${window.siyuan.languages.min}${updateHotkeyAfterTip(window.siyuan.config.keymap.general.closeTab.custom)}"><svg><use xlink:href='#iconMin'></use></svg></span>
+    <span data-type="min" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.min}${updateHotkeyAfterTip(window.siyuan.config.keymap.general.closeTab.custom)}"><svg><use xlink:href='#iconMin'></use></svg></span>
 </div>
 <div class="fn__flex-1" style="padding-top: 2px;"></div>
 <ul class="b3-list fn__flex-column" style="min-height: auto;height:30px;transition: height  .2s cubic-bezier(0, 0, .2, 1) 0ms">
@@ -279,6 +284,26 @@ export class Files extends Model {
                         event.preventDefault();
                         event.stopPropagation();
                         window.siyuan.menus.menu.remove();
+                        break;
+                    } else if (target.classList.contains("b3-list-item__switch")) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const rect = target.getBoundingClientRect();
+                        openPublishAccessDialog(target.parentElement.getAttribute("data-node-id") ||
+                            target.parentElement.parentElement.getAttribute("data-url"), {
+                            x: rect.left,
+                            y: rect.bottom,
+                            h: rect.height,
+                            w: rect.width,
+                        }, (access) => {
+                            target.innerHTML = access.iconHTML;
+                            fetchPost("/api/filetree/setPublishAccess", {
+                                id: access.id,
+                                visible: access.visible,
+                                password: access.password,
+                                disable: access.disable,
+                            });
+                        });
                         break;
                     } else if (isNotCtrl(event) && target.classList.contains("b3-list-item__action")) {
                         const type = target.getAttribute("data-type");
@@ -848,13 +873,16 @@ export class Files extends Model {
     }
 
     private genNotebook(item: INotebook) {
-        const emojiHTML = `<span class="b3-list-item__icon b3-tooltips b3-tooltips__e" aria-label="${window.siyuan.languages.changeIcon}">${unicode2Emoji(item.icon || window.siyuan.storage[Constants.LOCAL_IMAGES].note)}</span>`;
+        const editingPublishAccess = this.element.classList.contains("file-tree__publish-access--active");
+        const emojiHTML = `<span class="b3-list-item__icon b3-tooltips b3-tooltips__e${editingPublishAccess ? " fn__none" : ""}" aria-label="${window.siyuan.languages.changeIcon}">${unicode2Emoji(item.icon || window.siyuan.storage[Constants.LOCAL_IMAGES].note)}</span>`;
+        const switchHTML = `<span class="b3-list-item__switch b3-tooltips b3-tooltips__e${editingPublishAccess ? "" : " fn__none"}" aria-label="${window.siyuan.languages.publishAccess}">${getPublishAccessOptionByLevel("public").iconHTML}</span>`;
         if (item.closed) {
             return `<li data-url="${item.id}" class="b3-list-item b3-list-item--hide-action">
     <span class="b3-list-item__toggle fn__hidden">
         <svg class="b3-list-item__arrow"><use xlink:href="#iconRight"></use></svg>
     </span>
     ${emojiHTML}
+    ${switchHTML}
     <span class="b3-list-item__text" style="cursor: default;">${escapeHtml(item.name)}</span>
     <span data-type="open" data-url="${item.id}" class="b3-list-item__action b3-tooltips b3-tooltips__w${(window.siyuan.config.readonly) ? " fn__none" : ""}" aria-label="${window.siyuan.languages.openBy}">
         <svg><use xlink:href="#iconOpen"></use></svg>
@@ -869,6 +897,7 @@ data-type="navigation-root" data-path="/">
         <svg class="b3-list-item__arrow"><use xlink:href="#iconRight"></use></svg>
     </span>
     ${emojiHTML}
+    ${switchHTML}
     <span class="b3-list-item__text ariaLabel" data-position="parentE">${escapeHtml(item.name)}</span>
     <span data-type="more-root" class="b3-list-item__action b3-tooltips b3-tooltips__w${(window.siyuan.config.readonly) ? " fn__none" : ""}" aria-label="${window.siyuan.languages.more}">
         <svg><use xlink:href="#iconMore"></use></svg>
@@ -884,6 +913,7 @@ data-type="navigation-root" data-path="/">
         let html = "";
         let closeHtml = "";
         let closeCounter = 0;
+        const scrollTop = this.element.scrollTop;
         window.siyuan.notebooks.forEach((item) => {
             if (item.closed) {
                 closeCounter++;
@@ -901,11 +931,13 @@ data-type="navigation-root" data-path="/">
         } else {
             this.closeElement.classList.add("fn__none");
         }
-        window.siyuan.storage[Constants.LOCAL_FILESPATHS].forEach((item: IFilesPath) => {
-            item.openPaths.forEach((openPath) => {
-                this.selectItem(item.notebookId, openPath, undefined, false, false);
-            });
+        window.siyuan.storage[Constants.LOCAL_FILESPATHS].forEach(async (item: IFilesPath) => {
+            for (const openPath of item.openPaths) {
+                await this.selectItem(item.notebookId, openPath, undefined, false, false);
+            }
+            this.element.scrollTop = scrollTop;
         });
+        this.refreshPublishAccessSwitch();
         if (!init) {
             return;
         }
@@ -923,12 +955,12 @@ data-type="navigation-root" data-path="/">
 
     private onRemove(data: IWebSocketData) {
         // "doc2heading" 后删除文件或挂载帮助文档前的 unmount
-        if (data.cmd === "unmount") {
+        if (data.cmd === "closeBox" || data.cmd === "removeBox") {
             setNoteBook((notebooks) => {
                 const targetElement = this.element.querySelector(`ul[data-url="${data.data.box}"] li[data-path="${"/"}"]`);
                 if (targetElement) {
                     targetElement.parentElement.remove();
-                    if (Constants.CB_MOUNT_REMOVE !== data.callback) {
+                    if (data.cmd === "closeBox") {
                         let closeHTML = "";
                         notebooks.find(item => {
                             if (item.closed) {
@@ -942,7 +974,7 @@ data-type="navigation-root" data-path="/">
                     }
                 }
             });
-            if (Constants.CB_MOUNT_REMOVE === data.callback) {
+            if (data.cmd === "removeBox") {
                 const removeElement = this.closeElement.querySelector(`li[data-url="${data.data.box}"]`);
                 if (removeElement) {
                     removeElement.remove();
@@ -1108,6 +1140,7 @@ data-type="navigation-root" data-path="/">
             if (typeof scrollTop === "number") {
                 this.element.scroll({top: scrollTop, behavior: "smooth"});
             }
+            this.refreshPublishAccessSwitch();
             return;
         }
         liElement.querySelector(".b3-list-item__arrow").classList.add("b3-list-item__arrow--open");
@@ -1125,6 +1158,7 @@ data-type="navigation-root" data-path="/">
                 }
             }, 120);
         }, 2);
+        this.refreshPublishAccessSwitch();
     }
 
     private async onLsSelect(data: {
@@ -1262,6 +1296,7 @@ data-type="navigation-root" data-path="/">
             });
             liElement = await this.onLsSelect(response.data, filePath, setStorage, isSetCurrent);
         }
+        this.refreshPublishAccessSwitch();
         return liElement;
     }
 
@@ -1311,6 +1346,7 @@ data-type="navigation-root" data-path="/">
         }
         const ariaLabel = this.genDocAriaLabel(item, escapeAriaLabel);
         const paddingLeft = (item.path.split("/").length - 1) * 18;
+        const editingPublishAccess = this.element.classList.contains("file-tree__publish-access--active");
         return `<li data-node-id="${item.id}" data-name="${Lute.EscapeHTMLStr(item.name)}" draggable="true" data-count="${item.subFileCount}" 
 data-type="navigation-file" 
 style="--file-toggle-width:${paddingLeft + 18}px" 
@@ -1318,7 +1354,8 @@ class="b3-list-item b3-list-item--hide-action" data-path="${item.path}">
     <span style="padding-left: ${paddingLeft}px" class="b3-list-item__toggle b3-list-item__toggle--hl${item.subFileCount === 0 ? " fn__hidden" : ""}">
         <svg class="b3-list-item__arrow"><use xlink:href="#iconRight"></use></svg>
     </span>
-    <span class="b3-list-item__icon b3-tooltips b3-tooltips__n popover__block" data-id="${item.id}" aria-label="${window.siyuan.languages.changeIcon}">${unicode2Emoji(item.icon || (item.subFileCount === 0 ? window.siyuan.storage[Constants.LOCAL_IMAGES].file : window.siyuan.storage[Constants.LOCAL_IMAGES].folder))}</span>
+    <span class="b3-list-item__icon b3-tooltips b3-tooltips__n popover__block${editingPublishAccess ? " fn__none" : ""}" data-id="${item.id}" aria-label="${window.siyuan.languages.changeIcon}">${unicode2Emoji(item.icon || (item.subFileCount === 0 ? window.siyuan.storage[Constants.LOCAL_IMAGES].file : window.siyuan.storage[Constants.LOCAL_IMAGES].folder))}</span>
+    <span class="b3-list-item__switch b3-tooltips b3-tooltips__n${editingPublishAccess ? "" : " fn__none"}" aria-label="${window.siyuan.languages.publishAccess}">${getPublishAccessOptionByLevel("public").iconHTML}</span>
     <span class="b3-list-item__text ariaLabel" data-position="parentE"
 aria-label="${ariaLabel}">${getDisplayName(item.name, true, true)}</span>
     <span data-type="more-file" class="b3-list-item__action b3-tooltips b3-tooltips__nw" aria-label="${window.siyuan.languages.more}">
@@ -1378,6 +1415,42 @@ aria-label="${ariaLabel}">${getDisplayName(item.name, true, true)}</span>
                 submenu: subMenu,
             }).element);
         }
+        if (!window.siyuan.config.readonly && window.siyuan.config.publish.enable) {
+            window.siyuan.menus.menu.append(new MenuItem({
+                icon: "iconEye",
+                label: window.siyuan.languages.publishAccess,
+                checked: this.element.classList.contains("file-tree__publish-access--active"),
+                click: () => {
+                    this.element.classList.toggle("file-tree__publish-access--active");
+                    const editingPublishAccess = this.element.classList.contains("file-tree__publish-access--active");
+                    this.element.querySelectorAll(".b3-list-item__icon").forEach(item => {
+                        item.classList.toggle("fn__none", editingPublishAccess);
+                        item.nextElementSibling.classList.toggle("fn__none", !editingPublishAccess);
+                    });
+                    this.refreshPublishAccessSwitch();
+                }
+            }).element);
+        }
         return window.siyuan.menus.menu;
+    }
+
+    private refreshPublishAccessSwitch() {
+        if (window.siyuan.config.readonly || window.siyuan.isPublish ||
+            !this.element.classList.contains("file-tree__publish-access--active")) {
+            return;
+        }
+        const ids: string[] = [];
+        this.element.querySelectorAll("[data-url]").forEach((element: HTMLElement) => ids.push(element.getAttribute("data-url")));
+        this.element.querySelectorAll("[data-node-id]").forEach((element: HTMLElement) => ids.push(element.getAttribute("data-node-id")));
+        fetchPost("/api/filetree/getPublishAccess", {
+            ids
+        }, response => {
+            response.data.publishAccess.forEach((item: IPublishAccessItem) => {
+                const element = this.element.querySelector(`[data-url="${item.id}"] .b3-list-item__switch`) || this.element.querySelector(`[data-node-id="${item.id}"] .b3-list-item__switch`);
+                if (element) {
+                    element.innerHTML = getPublishAccessOptionByLevel(getPublishAccessLevel(item.visible, item.password, item.disable)).iconHTML;
+                }
+            });
+        });
     }
 }

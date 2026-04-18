@@ -41,7 +41,7 @@ func checkBlockRef(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
@@ -61,7 +61,7 @@ func getBlockTreeInfos(c *gin.Context) {
 	}
 
 	var ids []string
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
 	}
@@ -101,7 +101,7 @@ func getBlockRelevantIDs(c *gin.Context) {
 	if nil != err {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -137,7 +137,7 @@ func transferBlockRef(c *gin.Context) {
 
 	var refIDs []string
 	if nil != arg["refIDs"] {
-		for _, refID := range arg["refIDs"].([]interface{}) {
+		for _, refID := range arg["refIDs"].([]any) {
 			refIDs = append(refIDs, refID.(string))
 		}
 	}
@@ -146,7 +146,7 @@ func transferBlockRef(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -171,7 +171,7 @@ func swapBlockRef(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 }
@@ -237,7 +237,7 @@ func getHeadingDeleteTransaction(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -259,7 +259,7 @@ func getHeadingInsertTransaction(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -282,7 +282,7 @@ func getHeadingLevelTransaction(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 
@@ -304,7 +304,7 @@ func setBlockReminder(c *gin.Context) {
 	if err != nil {
 		ret.Code = -1
 		ret.Msg = err.Error()
-		ret.Data = map[string]interface{}{"closeTimeout": 7000}
+		ret.Data = map[string]any{"closeTimeout": 7000}
 		return
 	}
 }
@@ -320,7 +320,7 @@ func getUnfoldedParentID(c *gin.Context) {
 
 	id := arg["id"].(string)
 	parentID := model.GetUnfoldedParentID(id)
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"parentID": parentID,
 	}
 }
@@ -336,7 +336,7 @@ func checkBlockFold(c *gin.Context) {
 
 	id := arg["id"].(string)
 	isFolded, isRoot := model.IsBlockFolded(id)
-	ret.Data = map[string]interface{}{
+	ret.Data = map[string]any{
 		"isFolded": isFolded,
 		"isRoot":   isRoot,
 	}
@@ -377,6 +377,10 @@ func getDocInfo(c *gin.Context) {
 		ret.Msg = fmt.Sprintf(model.Conf.Language(15), id)
 		return
 	}
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		info = model.FilterBlockInfoByPublishAccess(c, publishAccess, info)
+	}
 	ret.Data = info
 }
 
@@ -388,7 +392,7 @@ func getDocsInfo(c *gin.Context) {
 	if !ok {
 		return
 	}
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
@@ -401,6 +405,12 @@ func getDocsInfo(c *gin.Context) {
 		ret.Msg = fmt.Sprintf(model.Conf.Language(15), ids)
 		return
 	}
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		for i, docinfo := range info {
+			info[i] = model.FilterBlockInfoByPublishAccess(c, publishAccess, docinfo)
+		}
+	}
 	ret.Data = info
 }
 
@@ -409,6 +419,10 @@ func getRecentUpdatedBlocks(c *gin.Context) {
 	defer c.JSON(http.StatusOK, ret)
 
 	blocks := model.RecentUpdatedBlocks()
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		blocks = model.FilterBlocksByPublishAccess(c, publishAccess, blocks)
+	}
 	ret.Data = blocks
 }
 
@@ -437,7 +451,7 @@ func getBlocksWordCount(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
@@ -524,6 +538,11 @@ func getRefIDs(c *gin.Context) {
 
 	id := arg["id"].(string)
 	refDefs, originalRefBlockIDs := model.GetBlockRefs(id)
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetInvisiblePublishAccess(publishAccess)
+		refDefs, originalRefBlockIDs = model.FilterRefDefsByPublishIgnore(publishIgnore, refDefs)
+	}
 	ret.Data = map[string]any{
 		"refDefs":             refDefs,
 		"originalRefBlockIDs": originalRefBlockIDs,
@@ -564,7 +583,7 @@ func getBlockDefIDsByRefText(c *gin.Context) {
 	}
 
 	anchor := arg["anchor"].(string)
-	excludeIDsArg := arg["excludeIDs"].([]interface{})
+	excludeIDsArg := arg["excludeIDs"].([]any)
 	var excludeIDs []string
 	for _, excludeID := range excludeIDsArg {
 		excludeIDs = append(excludeIDs, excludeID.(string))
@@ -597,7 +616,7 @@ func getBlockBreadcrumb(c *gin.Context) {
 	excludeTypesArg := arg["excludeTypes"]
 	var excludeTypes []string
 	if nil != excludeTypesArg {
-		for _, excludeType := range excludeTypesArg.([]interface{}) {
+		for _, excludeType := range excludeTypesArg.([]any) {
 			excludeTypes = append(excludeTypes, excludeType.(string))
 		}
 	}
@@ -635,7 +654,7 @@ func getBlocksIndexes(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
@@ -722,6 +741,22 @@ func getBlockDOM(c *gin.Context) {
 
 	id := arg["id"].(string)
 	dom := model.GetBlockDOM(id)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bt := treenode.GetBlockTree(id)
+		if bt != nil {
+			passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+			if password != "" && !model.CheckPublishAuthCookie(c, passwordID, password) {
+				dom = ""
+			}
+			if !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+				dom = ""
+			}
+		}
+	}
+
 	ret.Data = map[string]string{
 		"id":  id,
 		"dom": dom,
@@ -737,13 +772,29 @@ func getBlockDOMs(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
 	}
 
 	doms := model.GetBlockDOMs(ids)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bts := treenode.GetBlockTrees(ids)
+		for id, bt := range bts {
+			_, ok := doms[id]
+			if ok {
+				passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+				if (password != "" && !model.CheckPublishAuthCookie(c, passwordID, password)) || !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+					doms[id] = ""
+				}
+			}
+		}
+	}
+
 	ret.Data = doms
 }
 
@@ -758,6 +809,22 @@ func getBlockDOMWithEmbed(c *gin.Context) {
 
 	id := arg["id"].(string)
 	dom := model.GetBlockDOMWithEmbed(id)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bt := treenode.GetBlockTree(id)
+		if bt != nil {
+			passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+			if password != "" && !model.CheckPublishAuthCookie(c, passwordID, password) {
+				dom = ""
+			}
+			if !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+				dom = ""
+			}
+		}
+	}
+
 	ret.Data = map[string]string{
 		"id":  id,
 		"dom": dom,
@@ -773,13 +840,29 @@ func getBlockDOMsWithEmbed(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		ids = append(ids, id.(string))
 	}
 
 	doms := model.GetBlockDOMsWithEmbed(ids)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bts := treenode.GetBlockTrees(ids)
+		for id, bt := range bts {
+			_, ok := doms[id]
+			if ok {
+				passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+				if (password != "" && !model.CheckPublishAuthCookie(c, passwordID, password)) || !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+					doms[id] = ""
+				}
+			}
+		}
+	}
+
 	ret.Data = doms
 }
 
@@ -811,6 +894,22 @@ func getBlockKramdown(c *gin.Context) {
 	}
 
 	kramdown := model.GetBlockKramdown(id, mode)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bt := treenode.GetBlockTree(id)
+		if bt != nil {
+			passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+			if password != "" && !model.CheckPublishAuthCookie(c, passwordID, password) {
+				kramdown = ""
+			}
+			if !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+				kramdown = ""
+			}
+		}
+	}
+
 	ret.Data = map[string]string{
 		"id":       id,
 		"kramdown": kramdown,
@@ -826,7 +925,7 @@ func getBlockKramdowns(c *gin.Context) {
 		return
 	}
 
-	idsArg := arg["ids"].([]interface{})
+	idsArg := arg["ids"].([]any)
 	var ids []string
 	for _, id := range idsArg {
 		idStr := id.(string)
@@ -850,6 +949,22 @@ func getBlockKramdowns(c *gin.Context) {
 	}
 
 	kramdowns := model.GetBlockKramdowns(ids, mode)
+
+	if model.IsReadOnlyRoleContext(c) {
+		publishAccess := model.GetPublishAccess()
+		publishIgnore := model.GetDisablePublishAccess(publishAccess)
+		bts := treenode.GetBlockTrees(ids)
+		for id, bt := range bts {
+			_, ok := kramdowns[id]
+			if ok {
+				passwordID, password := model.GetPathPasswordByPublishAccess(bt.BoxID, bt.Path, publishAccess)
+				if (password != "" && !model.CheckPublishAuthCookie(c, passwordID, password)) || !model.CheckPathAccessableByPublishIgnore(bt.BoxID, bt.Path, publishIgnore) {
+					kramdowns[id] = ""
+				}
+			}
+		}
+	}
+
 	ret.Data = kramdowns
 }
 

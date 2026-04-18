@@ -292,6 +292,12 @@ func InitConf() {
 	if 3650 < Conf.Editor.HistoryRetentionDays {
 		Conf.Editor.HistoryRetentionDays = 3650
 	}
+	if nil == Conf.Editor.FloatWindowDelay {
+		v := 620
+		Conf.Editor.FloatWindowDelay = &v
+	} else {
+		*Conf.Editor.FloatWindowDelay = max(0, min(2000, *Conf.Editor.FloatWindowDelay))
+	}
 	if conf.MinDynamicLoadBlocks > Conf.Editor.DynamicLoadBlocks {
 		Conf.Editor.DynamicLoadBlocks = conf.MinDynamicLoadBlocks
 	}
@@ -331,10 +337,11 @@ func InitConf() {
 			Conf.OpenHelp = true
 		}
 	} else {
-		if 0 < semver.Compare("v"+util.Ver, "v"+Conf.System.KernelVersion) {
+		cmp := semver.Compare("v"+util.Ver, "v"+Conf.System.KernelVersion)
+		if 0 < cmp {
 			logging.LogInfof("upgraded from version [%s] to [%s]", Conf.System.KernelVersion, util.Ver)
 			Conf.ShowChangelog = true
-		} else if 0 > semver.Compare("v"+util.Ver, "v"+Conf.System.KernelVersion) {
+		} else if 0 > cmp {
 			logging.LogInfof("downgraded from version [%s] to [%s]", Conf.System.KernelVersion, util.Ver)
 		}
 
@@ -582,8 +589,8 @@ func InitConf() {
 	if "" != util.AccessAuthCode {
 		Conf.AccessAuthCode = util.AccessAuthCode
 	}
-	Conf.AccessAuthCode = strings.TrimSpace(Conf.AccessAuthCode)
 	Conf.AccessAuthCode = util.RemoveInvalid(Conf.AccessAuthCode)
+	Conf.AccessAuthCode = strings.TrimSpace(Conf.AccessAuthCode)
 
 	if 1 == Conf.DataIndexState {
 		// 上次未正常完成数据索引
@@ -668,7 +675,7 @@ func initLang() {
 			logging.LogErrorf("read language configuration [%s] failed: %s", jsonPath, err)
 			continue
 		}
-		langMap := map[string]interface{}{}
+		langMap := map[string]any{}
 		if err := gulu.JSON.UnmarshalJSON(data, &langMap); err != nil {
 			logging.LogErrorf("parse language configuration failed [%s] failed: %s", jsonPath, err)
 			continue
@@ -676,7 +683,7 @@ func initLang() {
 
 		kernelMap := map[int]string{}
 		label := langMap["_label"].(string)
-		kernelLangs := langMap["_kernel"].(map[string]interface{})
+		kernelLangs := langMap["_kernel"].(map[string]any)
 		for k, v := range kernelLangs {
 			num, convErr := strconv.Atoi(k)
 			if nil != convErr {
@@ -689,10 +696,10 @@ func initLang() {
 		name := langName[:strings.LastIndex(langName, ".")]
 		util.Langs[name] = kernelMap
 
-		util.TimeLangs[name] = langMap["_time"].(map[string]interface{})
-		util.TaskActionLangs[name] = langMap["_taskAction"].(map[string]interface{})
-		util.TrayMenuLangs[name] = langMap["_trayMenu"].(map[string]interface{})
-		util.AttrViewLangs[name] = langMap["_attrView"].(map[string]interface{})
+		util.TimeLangs[name] = langMap["_time"].(map[string]any)
+		util.TaskActionLangs[name] = langMap["_taskAction"].(map[string]any)
+		util.TrayMenuLangs[name] = langMap["_trayMenu"].(map[string]any)
+		util.AttrViewLangs[name] = langMap["_attrView"].(map[string]any)
 	}
 }
 
@@ -790,6 +797,7 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int) {
 		}
 	}
 
+	util.BroadcastByType("main", "exit", 0, "", nil)
 	util.UnlockWorkspace()
 
 	time.Sleep(500 * time.Millisecond)
@@ -800,7 +808,9 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int) {
 			time.Sleep(30 * time.Second)
 		}
 	}
+
 	closeSyncWebSocket()
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		logging.LogInfof("exited kernel")
@@ -839,7 +849,7 @@ func NewLute() (ret *lute.Lute) {
 	ret.SetSpellcheck(Conf.Editor.Spellcheck)
 
 	customEmojiMap := map[string]string{}
-	customEmojis.Range(func(key, value interface{}) bool {
+	customEmojis.Range(func(key, value any) bool {
 		customEmojiMap[key.(string)] = value.(string)
 		return true
 	})
@@ -1024,9 +1034,12 @@ const (
 	MaskedAccessAuthCode = "*******"
 )
 
+// GetMaskedConf 获取脱敏后的 Conf
 func GetMaskedConf() (ret *AppConf, err error) {
-	// 脱敏处理
-	data, err := gulu.JSON.MarshalIndentJSON(Conf, "", "  ")
+	// 序列化时持锁，避免与 loadThemes/LoadIcons 等写操作并发导致 slice 在编码过程中被改写而 panic https://github.com/siyuan-note/siyuan/issues/16978
+	Conf.m.Lock()
+	data, err := gulu.JSON.MarshalJSON(Conf)
+	Conf.m.Unlock()
 	if err != nil {
 		logging.LogErrorf("marshal conf failed: %s", err)
 		return
@@ -1237,17 +1250,21 @@ func closeUserGuide() {
 		}
 
 		msgId := util.PushMsg(Conf.language(233), 30000)
-		evt := util.NewCmdResult("unmount", 0, util.PushModeBroadcast)
-		evt.Data = map[string]interface{}{
-			"box": boxID,
-		}
-		util.PushEvent(evt)
 
 		unindex(boxID)
 
 		sql.FlushQueue()
-		if removeErr := filelock.Remove(boxDirPath); nil != removeErr {
-			logging.LogErrorf("remove corrupted user guide box [%s] failed: %s", boxDirPath, removeErr)
+
+		if removeErr := RemoveBox(boxID); nil == removeErr {
+			evt := util.NewCmdResult("removeBox", 0, util.PushModeBroadcast)
+			evt.Data = map[string]any{
+				"box": boxID,
+			}
+			util.PushEvent(evt)
+		} else {
+			logging.LogErrorf("close user guide box [%s] failed: %s", boxID, removeErr)
+			util.PushClearMsg(msgId)
+			continue
 		}
 
 		util.PushClearMsg(msgId)
