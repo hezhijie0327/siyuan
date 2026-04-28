@@ -28,14 +28,19 @@
     --b3-font-family-graph: arial;
     --b3-font-family-emoji: "Emojis Additional", emojis;
     --b3-font-family-math: KaTeX_Math;
-    --b3-font-family-kbd: SFMono-Regular, Consolas, "Liberation Mono";
+    --b3-font-family-kbd: var(--b3-font-family-protyle);
     --b3-font-size: 14px;
 
+    /* 背景 */
+    --b3-body-background: #2e3236;
+    --b3-body-background-hl-opacity: 0.24;
+    --b3-body-background-hl: 219, 86%, 57%;
+    --b3-layout-space: 4px;
+    --b3-layout-space-margin: -4px;
+
     /* 顶部工具栏 */
-    --b3-toolbar-background: var(--b3-theme-surface);
-    --b3-toolbar-blur-background: var(--b3-border-color);
     --b3-toolbar-color: var(--b3-theme-on-surface);
-    --b3-toolbar-hover: var(--b3-theme-background-light);
+    --b3-toolbar-hover: rgba(0, 0, 0, .36);
     --b3-toolbar-left-mac: 74px;
 
     /* 线条 */

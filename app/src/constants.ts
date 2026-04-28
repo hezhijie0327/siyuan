@@ -320,6 +320,7 @@ export abstract class Constants {
         ru_RU: "20210808180117-6v0mkxr",
         sk_SK: "20210808180117-6v0mkxr",
         tr_TR: "20210808180117-6v0mkxr",
+        uk_UA: "20210808180117-6v0mkxr",
         zh_CHT: "20211226090932-5lcq56f",
         zh_CN: "20210808180117-czj9bvb",
     };
@@ -687,7 +688,7 @@ export abstract class Constants {
                     type: "outline",
                     size: {width: 232, height: 0},
                     show: false,
-                    icon: "iconAlignCenter",
+                    icon: "iconOutline",
                     hotkeyLangId: "outline",
                 }, {
                     type: "inbox",
@@ -705,7 +706,7 @@ export abstract class Constants {
                     type: "tag",
                     size: {width: 232, height: 0},
                     show: false,
-                    icon: "iconTags",
+                    icon: "iconTag",
                     hotkeyLangId: "tag",
                 }]
             ]

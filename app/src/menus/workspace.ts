@@ -7,14 +7,7 @@ import {getOpenNotebookCount, originalPath, pathPosix, useShell} from "../util/p
 import {fetchNewDailyNote, mountHelp, newDailyNote} from "../util/mount";
 import {fetchPost} from "../util/fetch";
 import {Constants} from "../constants";
-import {
-    isInAndroid,
-    isInHarmony,
-    isInMobileApp,
-    isIPad,
-    setStorageVal,
-    writeText
-} from "../protyle/util/compatibility";
+import {isInAndroid, isInHarmony, isInMobileApp, isIPad, setStorageVal, writeText} from "../protyle/util/compatibility";
 import {openCard} from "../card/openCard";
 import {openSetting} from "../config";
 import {getAllDocks} from "../layout/getAll";
@@ -131,11 +124,11 @@ const editLayout = (layoutName?: string) => {
     });
 };
 
-const togglePinDock = (id: string, dock: Dock, icon: string) => {
+const togglePinDock = (id: string, dock: Dock, pinIcon: string, unpinIcon: string) => {
     return {
         id,
-        label: `${dock.pin ? window.siyuan.languages.unpin : window.siyuan.languages.pin}`,
-        icon,
+        label: `${dock.pin ? window.siyuan.languages.switchToFloatingLayout : window.siyuan.languages.switchToFixedLayout}`,
+        icon: `${dock.pin ? unpinIcon : pinIcon}`,
         current: !dock.pin,
         click() {
             dock.togglePin();
@@ -177,9 +170,9 @@ export const workspaceMenu = (app: App, rect: DOMRect) => {
         });
         if (!window.siyuan.config.readonly) {
             dockMenu.push({id: "separator_1", type: "separator"});
-            dockMenu.push(togglePinDock("leftDock", window.siyuan.layout.leftDock, "iconLeftTop"));
-            dockMenu.push(togglePinDock("rightDock", window.siyuan.layout.rightDock, "iconRightTop"));
-            dockMenu.push(togglePinDock("bottomDock", window.siyuan.layout.bottomDock, "iconBottomLeft"));
+            dockMenu.push(togglePinDock("leftDock", window.siyuan.layout.leftDock, "iconPanelLeft", "iconPanelLeftDashed"));
+            dockMenu.push(togglePinDock("rightDock", window.siyuan.layout.rightDock, "iconPanelRight", "iconPanelRightDashed"));
+            dockMenu.push(togglePinDock("bottomDock", window.siyuan.layout.bottomDock, "iconPanelBottom", "iconPanelBottomDashed"));
         }
         window.siyuan.menus.menu.append(new MenuItem({
             id: "panels",
@@ -516,7 +509,7 @@ export const workspaceMenu = (app: App, rect: DOMRect) => {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "recentDocs",
                 label: window.siyuan.languages.recentDocs,
-                icon: "iconFile",
+                icon: "iconRecentDocs",
                 accelerator: window.siyuan.config.keymap.general.recentDocs.custom,
                 click: () => {
                     openRecentDocs();
