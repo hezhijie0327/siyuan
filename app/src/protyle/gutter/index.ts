@@ -720,7 +720,7 @@ export class Gutter {
             }));
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "turnInto",
-                icon: "iconRefresh",
+                icon: "iconTurnInto",
                 label: window.siyuan.languages.turnInto,
                 type: "submenu",
                 submenu: turnIntoSubmenu
@@ -1322,7 +1322,7 @@ export class Gutter {
         if (turnIntoSubmenu.length > 0 && !protyle.disabled) {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "turnInto",
-                icon: "iconRefresh",
+                icon: "iconTurnInto",
                 label: window.siyuan.languages.turnInto,
                 type: "submenu",
                 submenu: turnIntoSubmenu
@@ -1676,7 +1676,7 @@ export class Gutter {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "assetIFrame",
                 type: "submenu",
-                icon: "iconLanguage",
+                icon: "iconGlobe",
                 label: window.siyuan.languages.assets,
                 submenu: iframeMenu(protyle, nodeElement)
             }).element);
@@ -1928,6 +1928,7 @@ export class Gutter {
         if (!protyle.options.backlinkData) {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "enter",
+                icon: "iconEnter",
                 accelerator: `${window.siyuan.config.keymap.general.enter.custom ? updateHotkeyTip(window.siyuan.config.keymap.general.enter.custom) + "/" : ""}${updateHotkeyAfterTip("⌘" + window.siyuan.languages.click)}`,
                 label: window.siyuan.languages.enter,
                 click: () => {
@@ -1936,6 +1937,7 @@ export class Gutter {
             }).element);
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "enterBack",
+                icon: "iconEnterBack",
                 accelerator: window.siyuan.config.keymap.general.enterBack.custom,
                 label: window.siyuan.languages.enterBack,
                 click: () => {
@@ -1946,6 +1948,7 @@ export class Gutter {
             /// #if !MOBILE
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "enter",
+                icon: "iconEnter",
                 accelerator: `${updateHotkeyTip(window.siyuan.config.keymap.general.enter.custom)}/${updateHotkeyTip("⌘" + window.siyuan.languages.click)}`,
                 label: window.siyuan.languages.openBy,
                 click: () => {
@@ -1991,6 +1994,7 @@ export class Gutter {
         }
         window.siyuan.menus.menu.append(new MenuItem({
             id: "jumpTo",
+            icon: "iconJumpTo",
             type: "submenu",
             label: window.siyuan.languages.jumpTo,
             submenu: [{
@@ -2028,6 +2032,7 @@ export class Gutter {
         if (type !== "NodeThematicBreak") {
             window.siyuan.menus.menu.append(new MenuItem({
                 id: "fold",
+                icon: "iconFoldUnFold",
                 label: window.siyuan.languages.fold,
                 accelerator: `${updateHotkeyTip(window.siyuan.config.keymap.editor.general.collapse.custom)}/${updateHotkeyTip("⌥" + window.siyuan.languages.click)}`,
                 click() {
@@ -2165,6 +2170,7 @@ export class Gutter {
         const disabledRTL = nodeElements.some(e => ["NodeAttributeView", "NodeCodeBlock", "NodeMathBlock"].includes(e.getAttribute("data-type")));
         window.siyuan.menus.menu.append(new MenuItem({
             id: "layout",
+            icon: "iconAlignSettings",
             label: window.siyuan.languages.layout,
             type: "submenu",
             submenu: [{
@@ -2217,7 +2223,7 @@ export class Gutter {
                 }
             }, {
                 id: "justify",
-                icon: "iconMenu",
+                icon: "iconAlignJustify",
                 label: window.siyuan.languages.justify,
                 click: () => {
                     this.genClick(nodeElements, protyle, (e: HTMLElement) => {
@@ -2363,6 +2369,7 @@ export class Gutter {
         const width = firstElement.style.width.endsWith("%") ? parseInt(firstElement.style.width) : 0;
         window.siyuan.menus.menu.append(new MenuItem({
             id: "width",
+            icon: "iconWidth",
             label: window.siyuan.languages.width,
             submenu: styles.concat([{
                 id: "widthDrag",
