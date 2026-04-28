@@ -204,7 +204,8 @@ const resolveAppLanguage = (languageTags) => {
         "pt": "pt_BR",
         "ru": "ru_RU",
         "sk": "sk_SK",
-        "tr": "tr_TR"
+        "tr": "tr_TR",
+        "uk": "uk_UA",
     };
 
     return languageMapping[language] || "en_US";
@@ -482,6 +483,10 @@ const initMainWindow = () => {
                 currentWindow.webContents.send("siyuan-open-url", siyuanOpenURL);
             }, 2000);
         }
+    });
+
+    currentWindow.webContents.on("render-process-gone", (event, details) => {
+        writeLog("Render process gone [reason=" + details.reason + ", exitCode=" + details.exitCode + "]");
     });
 
     if (windowState.isDevToolsOpened) {

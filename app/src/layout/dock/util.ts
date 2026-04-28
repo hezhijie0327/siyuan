@@ -152,7 +152,7 @@ export const openOutline = async (options: {
         options.title = response.data.name || window.siyuan.languages.untitled;
     }
     newWnd.addTab(new Tab({
-        icon: "iconAlignCenter",
+        icon: "iconOutline",
         title: options.title,
         callback(tab: Tab) {
             tab.addModel(new Outline({
@@ -199,6 +199,7 @@ export const toggleDockBar = (useElement: Element) => {
     });
     resizeTabs();
     resetFloatDockSize();
+    adjustDockPadding();
 };
 
 export const clearOBG = () => {
@@ -257,4 +258,23 @@ export const selectOpenTab = async () => {
         }
     }
     dockFile.toggleModel("file", true);
+};
+
+export const adjustDockPadding = () => {
+    const layoutElement = window.siyuan.layout.layout.children[0].element;
+    if (window.siyuan.layout.leftDock.elements[0].parentElement.classList.contains("fn__none")) {
+        layoutElement.style.marginLeft = "var(--b3-layout-space)";
+    } else {
+        layoutElement.style.marginLeft = "";
+    }
+    if (window.siyuan.layout.rightDock.elements[0].parentElement.classList.contains("fn__none")) {
+        layoutElement.style.marginRight = "var(--b3-layout-space)";
+    } else {
+        layoutElement.style.marginRight = "";
+    }
+    if (window.siyuan.config.appearance.hideStatusBar) {
+        layoutElement.style.marginBottom = "var(--b3-layout-space)";
+    } else {
+        layoutElement.style.marginBottom = "";
+    }
 };

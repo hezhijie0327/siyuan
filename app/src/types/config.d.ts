@@ -291,6 +291,7 @@ declare namespace Config {
         | "ru_RU"
         | "sk_SK"
         | "tr_TR"
+        | "uk_UA"
         | "zh_CN"
         | "zh_CHT";
 
