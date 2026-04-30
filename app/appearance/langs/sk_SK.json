@@ -143,8 +143,8 @@
   "publishAccessPrivateComment": "Neviditeľné pre verejnosť, prístup chránený heslom",
   "publishAccessForbiddenComment": "Prístup zakázaný",
   "copyMirror": "Kopírovať zrkadlo",
-  "duplicateMirror": "Duplikovať zrkadlo",
-  "duplicateCompletely": "Duplikovať úplne",
+  "duplicateMirror": "Vytvoriť zrkadlovú kópiu",
+  "duplicateCompletely": "Vytvoriť úplnú kópiu",
   "isMsStoreVerTip": "Používate verziu z Microsoft Store, skontrolujte aktualizácie tam",
   "andSubFile": "Naozaj chcete odstrániť <b>${x}</b> a jeho ${y} poddokumentov?",
   "confirmDeleteTip": "Naozaj chcete odstrániť <b>${x}</b>?",
@@ -1732,8 +1732,8 @@
     "241": "Presun do vlastného podnadpisu nie je podporovaný",
     "242": "Vyžaduje sa aspoň %s voľného miesta",
     "243": "Zobrazených je len prvých [%d] značiek (vrátane podznačiek), ak to chcete upraviť, zmeňte [Nastavenia - Dokumenty - Maximálny počet v zozname]",
-    "244": "Indexácia nebola dokončená, vykonajte [Prestavať index] pred vypnutím",
-    "245": "Indexácia nebola dokončená, aplikáciu ukončujte normálne",
+    "244": "",
+    "245": "",
     "246": "Názov dokumentu nesmie obsahovať /, nahradené podčiarkovníkom",
     "247": "Súbor [%s] je príliš veľký a bol ignorovaný pri synchronizácii",
     "248": "Cieľový nadpis je v kontajneri a nemožno ho použiť ako cieľ",
@@ -1774,6 +1774,8 @@
     "283": "Heslo",
     "284": "Prístup zakázaný",
     "285": "Nesprávne heslo",
-    "286": "[%s] bol vrátený"
+    "286": "[%s] bol vrátený",
+    "287": "Prístupový autorizačný kód nemôže obsahovať iba medzery. Ak ho chcete zakázať, jednoducho vymažte vstupné pole",
+    "288": " (Predvolené)"
   }
 }

@@ -143,8 +143,8 @@
   "publishAccessPrivateComment": "Nie jest widoczny publicznie, wymaga hasła do dostępu",
   "publishAccessForbiddenComment": "Dostęp zabroniony",
   "copyMirror": "Kopiuj lustro",
-  "duplicateMirror": "Duplikuj lustro",
-  "duplicateCompletely": "Duplikuj całkowicie",
+  "duplicateMirror": "Utwórz kopię lustrzaną",
+  "duplicateCompletely": "Utwórz pełną kopię",
   "isMsStoreVerTip": "Aktualnie używana wersja to wersja Microsoft Store, proszę sprawdzić aktualizacje w Microsoft Store",
   "andSubFile": "Czy jesteś pewny, że chcesz usunąć <b>${x}</b> i jego ${y} poddokumenty?",
   "confirmDeleteTip": "Czy na pewno chcesz usunąć <b>${x}</b>?",
@@ -1732,8 +1732,8 @@
     "241": "Przeciąganie do podtytułu nie jest obsługiwane",
     "242": "Obecnie dostępna przestrzeń to [%s], co najmniej [%s] jest wymagane do wykonania tej operacji",
     "243": "Tylko wymień pierwsze [%d] tagów (w tym podtagi), jeśli potrzebujesz dostosować, proszę zmodyfikować [Ustawienia - Dokumenty - Maksymalna liczba do wyświetlenia]",
-    "244": "Indeksowanie danych nie zostało zakończone po ostatnim użyciu. Proszę wykonać [Ustawienia - O programie - Przebudowa indeksu]. Proszę całkowicie wyjść z programu przed zamknięciem komputera",
-    "245": "Indeksowanie danych nie zostało zakończone po ostatnim użyciu. Proszę wykonać [Ustawienia - O programie - Przebudowa indeksu]. Proszę użyć [Zamknij aplikację] w prawym panelu bocznym, aby wyjść normalnie",
+    "244": "",
+    "245": "",
     "246": "Tytuł dokumentu nie może zawierać / i został zastąpiony _",
     "247": "Plik [%s] jest większy niż maksymalne ograniczenie [%s], i został zignorowany przy przesyłaniu do chmury",
     "248": "Docelowy nagłówek znajduje się w bloku kontenera i nie może być użyty jako punkt upuszczenia",
@@ -1774,6 +1774,8 @@
     "283": "Hasło",
     "284": "Dostęp zabroniony",
     "285": "Hasło jest nieprawidłowe",
-    "286": "[%s] został cofnięty"
+    "286": "[%s] został cofnięty",
+    "287": "Kod autoryzacji dostępu nie może składać się wyłącznie ze spacji. Aby go wyłączyć, po prostu wyczyść pole wprowadzania",
+    "288": " (Domyślny)"
   }
 }

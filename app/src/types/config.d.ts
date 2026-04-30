@@ -211,6 +211,10 @@ declare namespace Config {
          */
         darkThemes: string[];
         /**
+         * Whether to hide toolbar
+         */
+        hideToolbar: boolean;
+        /**
          * Whether to hide status bar
          */
         hideStatusBar: boolean;
@@ -221,7 +225,7 @@ declare namespace Config {
         /**
          * List of installed icon names
          */
-        icons: string[];
+        icons: { label: string; name: string }[];
         /**
          * The version number of the icon currently in use
          */
@@ -451,6 +455,10 @@ declare namespace Config {
          * The font used in the editor
          */
         fontFamily: string;
+        /**
+         * The font weight used in the editor, 0 means not set
+         */
+        fontWeight: number;
         /**
          * The font size used in the editor
          */

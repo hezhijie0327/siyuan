@@ -143,8 +143,8 @@
   "publishAccessPrivateComment": "Für Öffentlichkeit nicht sichtbar, Zugriff erfordert Passwort",
   "publishAccessForbiddenComment": "Zugriff verboten",
   "copyMirror": "Spiegel kopieren",
-  "duplicateMirror": "Spiegel duplizieren",
-  "duplicateCompletely": "Vollständig duplizieren",
+  "duplicateMirror": "Spiegelkopie erstellen",
+  "duplicateCompletely": "Vollständige Kopie erstellen",
   "isMsStoreVerTip": "Die derzeit verwendete Version ist die Microsoft Store-Version, bitte überprüfen Sie die Updates im Microsoft Store",
   "andSubFile": "Sind Sie sicher, dass Sie <b>${x}</b> und seine ${y} Unterdokumente löschen möchten?",
   "confirmDeleteTip": "Sind Sie sicher, dass Sie <b>${x}</b> löschen möchten?",
@@ -1732,8 +1732,8 @@
     "241": "Ziehen zu seiner Unterüberschrift wird nicht unterstützt",
     "242": "Derzeit verfügbarer Speicherplatz beträgt [%s], mindestens [%s] sind erforderlich, um diese Operation auszuführen",
     "243": "Nur die ersten [%d] Tags (einschließlich Untertags) auflisten, falls Sie anpassen müssen, bitte ändern [Einstellungen - Dokumente - Maximale Anzahl aufzulistender]",
-    "244": "Die Datenindizierung wurde nach der letzten Nutzung nicht abgeschlossen. Bitte führen Sie [Einstellungen - Über - Index neu aufbauen] aus. Bitte beenden Sie das Programm vollständig, bevor Sie den Computer herunterfahren",
-    "245": "Die Datenindizierung wurde nach der letzten Nutzung nicht abgeschlossen. Bitte führen Sie [Einstellungen - Über - Index neu aufbauen] aus. Bitte verwenden Sie [Anwendung beenden] im rechten Spaltenpanel, um normal zu beenden.",
+    "244": "",
+    "245": "",
     "246": "Der Dokumenttitel darf das /-Zeichen nicht enthalten und wurde durch _ ersetzt.",
     "247": "Datei [%s] ist größer als die maximale Grenze [%s] und wurde beim Hochladen in die Cloud ignoriert.",
     "248": "Die Zielfüberschrift befindet sich im Containerblock und kann nicht als Ablagepunkt verwendet werden.",
@@ -1774,6 +1774,8 @@
     "283": "Passwort",
     "284": "Zugriff verweigert",
     "285": "Passwort ist falsch",
-    "286": "[%s] wurde bereits zurückgesetzt"
+    "286": "[%s] wurde bereits zurückgesetzt",
+    "287": "Der Zugriffsautorisierungscode darf nicht nur aus Leerzeichen bestehen. Um ihn zu deaktivieren, leeren Sie das Eingabefeld direkt",
+    "288": " (Standard)"
   }
 }

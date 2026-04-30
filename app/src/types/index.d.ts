@@ -252,6 +252,7 @@ interface Window {
         returnDesktop(): void
         openExternal(url: string): void
         exportByDefault(url: string): void
+        saveExportFile(url: string): void
         changeStatusBarColor(color: string, mode: number): void
         writeClipboard(text: string): void
         writeHTMLClipboard(text: string, html: string): void
@@ -556,6 +557,8 @@ interface ISiyuan {
     },
     dragElement?: HTMLElement,
     currentDragOverTabHeadersElement?: HTMLElement
+    touchDragActive?: boolean,
+    touchDragGhost?: HTMLElement | null,
     layout?: {
         layout?: import("../layout").Layout,
         centerLayout?: import("../layout").Layout,

@@ -143,8 +143,8 @@
   "publishAccessPrivateComment": "Not publicly visible, requires password to access",
   "publishAccessForbiddenComment": "Access forbidden",
   "copyMirror": "Copy mirror",
-  "duplicateMirror": "Duplicate mirror",
-  "duplicateCompletely": "Duplicate completely",
+  "duplicateMirror": "Create mirror copy",
+  "duplicateCompletely": "Create complete copy",
   "isMsStoreVerTip": "The currently used version is the Microsoft Store version, please check for updates in the Microsoft Store",
   "andSubFile": "Are you sure you want to delete <b>${x}</b> and its ${y} subdocs?",
   "confirmDeleteTip": "Are you sure to delete <b>${x}</b>?",
@@ -1732,8 +1732,8 @@
     "241": "Drag to its subheading is not supported",
     "242": "Currently available space is [%s], at least [%s] is required to perform this operation",
     "243": "Only list the first [%d] tags (including subtags), if you need to adjust, please modify [Settings - Documents - Maximum number to list]",
-    "244": "Data indexing was not completed after the last use. Please execute [Settings - About - Rebuild Index]. Please exit the program completely before shutting down the computer",
-    "245": "Data indexing was not completed after the last use. Please execute [Settings - About - Rebuild Index]. Please use [Exit Application] in the right column panel to exit normally",
+    "244": "",
+    "245": "",
     "246": "The document title cannot contain / and has been replaced with _",
     "247": "File [%s] is larger than the maximum limit [%s], and has been ignored for uploading to the cloud",
     "248": "The target heading is located in the container block and cannot be used as a drop point",
@@ -1774,6 +1774,8 @@
     "283": "Password",
     "284": "Access denied",
     "285": "Password is incorrect",
-    "286": "[%s] has already been rolled back"
+    "286": "[%s] has already been rolled back",
+    "287": "The access auth code cannot contain only spaces. To disable it, just clear the input box",
+    "288": " (Default)"
   }
 }

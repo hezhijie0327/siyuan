@@ -31,6 +31,7 @@ import {setTitle} from "../dialog/processSystem";
 import {newCenterEmptyTab, resizeTabs} from "./tabUtil";
 import {setStorageVal} from "../protyle/util/compatibility";
 import {adjustDockPadding} from "./dock/util";
+import {setTabPosition} from "../window/setHeader";
 
 export const setPanelFocus = (element: Element, isSaveLayout = true) => {
     if (element.getAttribute("data-type") === "wnd") {
@@ -470,7 +471,10 @@ export const JSONToLayout = (app: App, isStart: boolean) => {
         afterLoadPlugin(item);
     });
     saveLayout();
-    resizeTopBar();
+    // 等待 dock 面板动画结束
+    setTimeout(() => {
+        setTabPosition();
+    }, Constants.TIMEOUT_TRANSITION);
 };
 
 export const layoutToJSON = (layout: Layout | Wnd | Tab | Model, json: any, breakObj?: IObject) => {
@@ -655,15 +659,18 @@ export const resizeTopBar = () => {
     }
     barMoreElement.setAttribute("data-hideids", hideIds.join(","));
 
-    const width = dragElement.clientWidth;
-    const dragRect = dragElement.getBoundingClientRect();
-    const left = dragRect.left;
-    const right = window.innerWidth - dragRect.right;
-    if (left > right && left - right < width / 3) {
-        dragElement.style.paddingRight = (left - right) + "px";
-    } else if (left < right && right - left < width / 3) {
-        dragElement.style.paddingLeft = (right - left) + "px";
+    if (!window.siyuan.config.appearance.hideToolbar) {
+        const width = dragElement.clientWidth;
+        const dragRect = dragElement.getBoundingClientRect();
+        const left = dragRect.left;
+        const right = window.innerWidth - dragRect.right;
+        if (left > right && left - right < width / 3) {
+            dragElement.style.paddingRight = (left - right) + "px";
+        } else if (left < right && right - left < width / 3) {
+            dragElement.style.paddingLeft = (right - left) + "px";
+        }
     }
+
     window.siyuan.storage[Constants.LOCAL_PLUGINTOPUNPIN].forEach((id: string) => {
         toolbarElement.querySelector("#" + id)?.classList.add("fn__none");
     });
@@ -772,6 +779,7 @@ export const addResize = (obj: Layout | Wnd, after = true) => {
 
         let range: Range;
         resizeElement.addEventListener("mousedown", (event: MouseEvent) => {
+            event.preventDefault();
             getAllModels().editor.forEach((item) => {
                 if (item.editor && item.editor.protyle && item.element.parentElement) {
                     hideElements(["gutter"], item.editor.protyle);
@@ -844,6 +852,7 @@ export const addResize = (obj: Layout | Wnd, after = true) => {
                 documentSelf.onselectstart = null;
                 documentSelf.onselect = null;
                 adjustLayout(isWindow() ? window.siyuan.layout.centerLayout : undefined);
+                setTabPosition(true);
                 resizeTabs();
                 if (!isWindow()) {
                     window.siyuan.layout.leftDock.setSize();
@@ -950,7 +959,7 @@ export const adjustLayout = (layout: Layout = window.siyuan.layout.centerLayout.
     if (layout.direction === "lr" && layout.element.scrollWidth > layout.element.clientWidth + 2) {
         let index = Math.ceil(screen.width / 8);
         while (index > 0) {
-            let width = 0;
+            let width = layout.element.firstElementChild.classList.contains("layout__dockl") ? 8 : 0;
             layout.children.find((item: Layout | Wnd) => {
                 if (item.element.style.width && item.element.style.width !== "0px") {
                     item.element.style.maxWidth = Math.max(Math.min(item.element.clientWidth, window.innerWidth) - 8, 64) + "px";

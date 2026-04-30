@@ -17,6 +17,7 @@ import {
     isMac,
     isOnlyMeta,
     openByMobile,
+    saveExportFile,
     updateHotkeyAfterTip,
     updateHotkeyTip,
     writeText
@@ -174,9 +175,13 @@ export class Gutter {
             ghostElement.setAttribute("style", `position:fixed;opacity:.1;width:${selectElements[0].clientWidth}px;padding:0;`);
             document.body.append(ghostElement);
             event.dataTransfer.setDragImage(ghostElement, 0, 0);
-            setTimeout(() => {
-                ghostElement.remove();
-            });
+            if (window.siyuan.touchDragActive) {
+                window.siyuan.touchDragGhost = ghostElement;
+            } else {
+                setTimeout(() => {
+                    ghostElement.remove();
+                });
+            }
             buttonElement.style.opacity = "0.38";
             window.siyuan.dragElement = avElement as HTMLElement || protyle.wysiwyg.element;
             event.dataTransfer.setData(`${Constants.SIYUAN_DROP_GUTTER}${buttonElement.getAttribute("data-type")}${Constants.ZWSP}${buttonElement.getAttribute("data-subtype")}${Constants.ZWSP}${selectIds}${Constants.ZWSP}${window.siyuan.config.system.workspaceDir}`,
@@ -1650,7 +1655,7 @@ export class Gutter {
                         id: nodeElement.getAttribute("data-av-id"),
                         blockID: id,
                     }, response => {
-                        openByMobile(response.data.zip);
+                        saveExportFile(response.data.zip);
                     });
                 }
             }).element);
