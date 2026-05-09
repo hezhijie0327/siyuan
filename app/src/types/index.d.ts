@@ -225,6 +225,7 @@ interface Window {
     webkit: {
         nativeCallbacks: { [key: string]: (id: number) => void },
         messageHandlers: {
+            saveExportFile: { postMessage: (url: string) => void }
             openLink: { postMessage: (url: string) => void }
             startKernelFast: { postMessage: (url: string) => void }
             changeStatusBar: { postMessage: (url: string) => void }
@@ -276,6 +277,7 @@ interface Window {
         hideKeyboard(): void
         openExternal(url: string): void
         exportByDefault(url: string): void
+        saveExportFile(url: string): void
         changeStatusBarColor(color: string, mode: number): void
         writeClipboard(text: string): void
         writeHTMLClipboard(text: string, html: string): void
@@ -293,6 +295,8 @@ interface Window {
     };
 
     Protyle: import("../protyle/method").default;
+
+    lockscreenByMode(): void;
 
     goBack(): void;
 

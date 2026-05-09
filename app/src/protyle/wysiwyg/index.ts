@@ -2672,11 +2672,11 @@ export class WYSIWYG {
                     return;
                 }
             }
+            const range = getEditorRange(this.element);
             // 面包屑定位，需至于前，否则 return 的元素就无法进行面包屑定位
             if (protyle.options.render.breadcrumb) {
-                protyle.breadcrumb.render(protyle, false, hasClosestBlock(event.target));
+                protyle.breadcrumb.render(protyle, false, hasClosestBlock(range.startContainer));
             }
-            const range = getEditorRange(this.element);
             // https://github.com/siyuan-note/siyuan/issues/12317
             if (range.startContainer.nodeType !== 3 &&
                 (range.startContainer as Element).classList.contains("protyle-action") &&
@@ -3197,16 +3197,15 @@ export class WYSIWYG {
             setTimeout(() => {
                 // 选中后，在选中的文字上点击需等待 range 更新
                 let newRange = getEditorRange(this.element);
-                // 点击两侧或间隙导致光标跳转到开头 https://github.com/siyuan-note/siyuan/issues/16179
-                if (hasClosestBlock(event.target) !== hasClosestBlock(newRange.startContainer) &&
-                    this.element.querySelector("[data-node-id]")?.contains(newRange.startContainer)) {
+                // 表格中点击两侧或间隙导致光标跳转到开头 https://github.com/siyuan-note/siyuan/issues/16179
+                if (event.target.classList.contains("protyle-wysiwyg") || event.target.parentElement.classList.contains("table")) {
                     const rect = this.element.getBoundingClientRect();
                     let rangeElement = document.elementFromPoint(rect.left + rect.width / 2, event.clientY);
                     if (rangeElement === this.element) {
                         rangeElement = document.elementFromPoint(rect.left + rect.width / 2, event.clientY + 8);
                     }
                     let blockElement = hasClosestBlock(rangeElement);
-                    if (blockElement) {
+                    if (blockElement && blockElement.classList.contains("table")) {
                         const embedElement = isInEmbedBlock(blockElement);
                         if (embedElement) {
                             blockElement = embedElement;

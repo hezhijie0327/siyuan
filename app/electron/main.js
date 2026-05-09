@@ -197,13 +197,17 @@ const resolveAppLanguage = (languageTags) => {
         "es": "es_ES",
         "fr": "fr_FR",
         "he": "he_IL",
+        "hi": "hi_IN",
+        "id": "id_ID",
         "it": "it_IT",
         "ja": "ja_JP",
         "ko": "ko_KR",
+        "nl": "nl_NL",
         "pl": "pl_PL",
         "pt": "pt_BR",
         "ru": "ru_RU",
         "sk": "sk_SK",
+        "th": "th_TH",
         "tr": "tr_TR",
         "uk": "uk_UA",
     };
@@ -404,7 +408,6 @@ const initMainWindow = () => {
         fullscreenable: true,
         fullscreen: windowState.fullscreen,
         trafficLightPosition: {x: 8, y: 8},
-        transparent: "darwin" === process.platform, // 避免缩放窗口时出现边框
         webPreferences: {
             nodeIntegration: true,
             webviewTag: true,
@@ -432,7 +435,7 @@ const initMainWindow = () => {
     }).then((response) => {
         setProxy(`${response.data.proxy.scheme}://${response.data.proxy.host}:${response.data.proxy.port}`, currentWindow.webContents).then(() => {
             // 加载主界面
-            currentWindow.loadURL(getServer() + "/stage/build/app/?v=" + new Date().getTime());
+            currentWindow.loadURL(getServer() + "/stage/build/app/?v=" + Date.now());
         });
     });
 
@@ -1147,7 +1150,6 @@ app.whenReady().then(() => {
             minWidth: 493,
             minHeight: 376,
             fullscreenable: true,
-            transparent: "darwin" === process.platform, // 避免缩放窗口时出现边框
             frame: "darwin" === process.platform,
             icon: path.join(appDir, "stage", "icon-large.png"),
             titleBarStyle: "hidden",

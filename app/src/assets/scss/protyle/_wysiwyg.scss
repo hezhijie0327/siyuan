@@ -644,10 +644,10 @@
     content: "";
     height: 16px;
     width: 16px;
-    background: var(--b3-theme-surface-lighter);
+    background-color: var(--b3-theme-surface-lighter);
     display: block;
     position: absolute;
-    left: -18px;
+    left: -16px;
     top: 50%;
     border-radius: var(--b3-border-radius-b);
     margin-top: -8px;
@@ -734,7 +734,7 @@
 
     &:hover {
       &::after {
-        background-color: var(--b3-theme-background-light);
+        background-color: var(--b3-list-icon-hover);
       }
 
       color: var(--b3-theme-on-background);

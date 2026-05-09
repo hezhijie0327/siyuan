@@ -2,15 +2,14 @@ import {getAllModels} from "../getAll";
 import {Tab} from "../Tab";
 import {Graph} from "./Graph";
 import {Outline} from "./Outline";
-import {fixWndFlex1, getInstanceById, getWndByLayout, saveLayout} from "../util";
-import {getDockByType, resizeTabs} from "../tabUtil";
+import {fixWndFlex1, getInstanceById, getWndByLayout} from "../util";
+import {getDockByType, resizeTabs, setTabPosition} from "../tabUtil";
 import {Backlink} from "./Backlink";
 import {App} from "../../index";
 import {Wnd} from "../Wnd";
 import {fetchSyncPost} from "../../util/fetch";
 import {Files} from "./Files";
 import {Editor} from "../../editor";
-import {setTabPosition} from "../../window/setHeader";
 
 export const openBacklink = async (options: {
     app: App,

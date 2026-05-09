@@ -102,6 +102,7 @@ export class Background {
     private actionElements: NodeListOf<Element>;
     private tagsElement: HTMLElement;
     private transparentData = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    private dragOccurred = false;
 
     constructor(protyle: IProtyle) {
         this.element = document.createElement("div");
@@ -205,6 +206,10 @@ export class Background {
             });
         });
         this.element.addEventListener("click", (event) => {
+            if (this.dragOccurred) {
+                this.dragOccurred = false;
+                return;
+            }
             let target = event.target as HTMLElement;
             hideElements(["gutter"], protyle);
 
@@ -414,68 +419,133 @@ export class Background {
             }
         });
 
-        let dragSourceElement: HTMLElement | null = null;
+        this.element.addEventListener("mousedown", (event: MouseEvent) => {
+            this.dragOccurred = false;
+            if (protyle.disabled) return;
 
-        this.element.addEventListener("dragstart", (event: DragEvent) => {
             const target = event.target as HTMLElement;
-            if (target.closest(".b3-chip__close") || protyle.disabled) {
-                event.preventDefault();
-                return;
-            }
-            const chipElement = target.closest(".b3-chips__doctag .b3-chip") as HTMLElement;
-            if (!chipElement) {
-                event.preventDefault();
-                return;
-            }
-            dragSourceElement = chipElement;
-            event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("text/plain", "");
-            chipElement.classList.add("b3-chip--dragging");
-        });
+            const isCloseBtn = !!target.closest(".b3-chip__close");
+            let chipElement = target.closest(".b3-chip") as HTMLElement;
 
-        this.element.addEventListener("dragover", (event: DragEvent) => {
-            if (!dragSourceElement) {
-                return;
-            }
-            const target = event.target as HTMLElement;
-            const chipElement = target.closest(".b3-chips__doctag .b3-chip") as HTMLElement;
-            if (!chipElement || chipElement === dragSourceElement) {
-                return;
-            }
-            event.preventDefault();
-            const rect = chipElement.getBoundingClientRect();
-            if (event.clientX < rect.left + rect.width / 2) {
-                chipElement.before(dragSourceElement);
-            } else {
-                chipElement.after(dragSourceElement);
-            }
-        });
-
-        this.element.addEventListener("drop", (event: DragEvent) => {
-            if (!dragSourceElement) {
-                return;
-            }
-            event.preventDefault();
-            const tags = this.getTags();
-            this.ial.tags = tags.toString();
-            fetchPost("/api/attr/setBlockAttrs", {
-                id: protyle.block.rootID,
-                attrs: {"tags": tags.toString()}
-            });
-        });
-
-        this.element.addEventListener("dragend", () => {
-            if (!dragSourceElement) {
-                return;
-            }
-            dragSourceElement.classList.remove("b3-chip--dragging");
-            if (dragSourceElement.parentElement) {
-                const currentTags = this.getTags().toString();
-                if (currentTags !== this.ial.tags) {
-                    this.render(this.ial, protyle.block.rootID);
+            // 自动定位最近的标签逻辑
+            if (!chipElement && target.closest(".b3-chips__doctag")) {
+                const rects = Array.from(this.element.querySelectorAll(".b3-chip")).map(el => ({
+                    el: el as HTMLElement,
+                    rect: el.getBoundingClientRect()
+                }));
+                if (rects.length > 0) {
+                    chipElement = rects.reduce((prev, curr) => {
+                        return Math.abs(curr.rect.left + curr.rect.width / 2 - event.clientX) <
+                        Math.abs(prev.rect.left + prev.rect.width / 2 - event.clientX) ? curr : prev;
+                    }).el;
                 }
             }
-            dragSourceElement = null;
+
+            if (!chipElement) return;
+
+            event.preventDefault();
+
+            // --- 核心变量初始化 ---
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const initialRect = chipElement.getBoundingClientRect();
+
+            // 计算鼠标点击位置相对于元素左上角的偏移，这是“跟手”的关键
+            const offsetX = startX - initialRect.left;
+            const offsetY = startY - initialRect.top;
+
+            let isDragging = false;
+            let dragClone: HTMLElement | null = null;
+
+            const onMouseMove = (moveEvent: MouseEvent) => {
+                const deltaX = moveEvent.clientX - startX;
+                const deltaY = moveEvent.clientY - startY;
+
+                // 阈值判断：移动超过 5 像素才视为拖拽，防止手抖误操作
+                if (!isDragging) {
+                    if (Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) return;
+                    isDragging = true;
+
+                    // 创建克隆体
+                    dragClone = chipElement.cloneNode(true) as HTMLElement;
+                    dragClone.classList.add("b3-chip--dragclone");
+
+                    // 初始样式设置
+                    Object.assign(dragClone.style, {
+                        position: "fixed",
+                        left: `${moveEvent.clientX - offsetX}px`,
+                        top: `${moveEvent.clientY - offsetY}px`,
+                        width: `${initialRect.width}px`,
+                        height: `${initialRect.height}px`,
+                        margin: "0",
+                        zIndex: "9999",
+                        pointerEvents: "none",
+                        transition: "none",
+                        opacity: "0.8",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
+                    });
+
+                    document.body.appendChild(dragClone);
+                    chipElement.classList.add("b3-chip--dragging"); // 占位符设为透明/灰色
+                    document.body.style.cursor = "grabbing";
+                    event.preventDefault();
+                }
+
+                if (isDragging && dragClone) {
+                    dragClone.style.left = `${moveEvent.clientX - offsetX}px`;
+                    dragClone.style.top = `${moveEvent.clientY - offsetY}px`;
+
+                    // 排序碰撞检测
+                    const pointTarget = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+                    const targetChip = pointTarget?.closest(".b3-chip") as HTMLElement;
+
+                    if (targetChip && targetChip !== chipElement && this.tagsElement.contains(targetChip)) {
+                        const rect = targetChip.getBoundingClientRect();
+                        // 根据鼠标位置决定插入在目标的前面还是后面
+                        if (moveEvent.clientX > rect.left + rect.width / 2) {
+                            targetChip.after(chipElement);
+                        } else {
+                            targetChip.before(chipElement);
+                        }
+                    }
+                }
+            };
+
+            const onMouseUp = (upEvent: MouseEvent) => {
+                document.onmousemove = null;
+                document.onmouseup = null;
+                document.body.style.cursor = "";
+
+                if (isDragging) {
+                    this.dragOccurred = true;
+                    // 阻止拖拽结束后可能触发的点击事件（搜索或打开链接）
+                    upEvent.preventDefault();
+                    upEvent.stopPropagation();
+
+                    if (dragClone) {
+                        dragClone.remove();
+                        dragClone = null;
+                    }
+                    chipElement.classList.remove("b3-chip--dragging");
+
+                    // 持久化排序结果
+                    const tags = this.getTags();
+                    const tagsString = tags.toString();
+                    if (tagsString !== this.ial.tags) {
+                        this.ial.tags = tagsString;
+                        fetchPost("/api/attr/setBlockAttrs", {
+                            id: protyle.block.rootID,
+                            attrs: {"tags": tagsString}
+                        });
+                    }
+                } else if (isCloseBtn) {
+                    // 如果没拖拽且点在关闭按钮上
+                    target.closest(".b3-chip__close").dispatchEvent(new MouseEvent("click", {bubbles: true}));
+                }
+            };
+
+            document.onmousemove = (e) => onMouseMove(e as MouseEvent);
+            document.onmouseup = (e) => onMouseUp(e as MouseEvent);
         });
     }
 
@@ -506,12 +576,11 @@ export class Background {
         this.element.setAttribute("data-node-id", rootId);
         if (tags) {
             let html = "";
-            const colors = ["secondary", "primary", "info", "success", "warning", "error", "pink"];
-            Array.from(new Set(tags.split(",").map(item => item.trim()))).forEach((item, index) => {
+            Array.from(new Set(tags.split(",").map(item => item.trim()))).forEach((item) => {
                 if (!item.replace(/ /g, "")) {
                     return;
                 }
-                html += `<div draggable="true" class="b3-chip b3-chip--middle b3-chip--pointer b3-chip--${colors[index % 7]}" data-type="open-search">${escapeHtml(item)}<svg class="b3-chip__close" data-type="remove-tag"><use xlink:href="#iconCloseRound"></use></svg></div>`;
+                html += `<div class="b3-chip b3-chip--middle b3-chip--pointer" data-type="open-search">${escapeHtml(item)}<svg class="b3-chip__close" data-type="remove-tag"><use xlink:href="#iconClose"></use></svg></div>`;
             });
             this.tagsElement.innerHTML = `${html}
 <div class="protyle-background__action fn__flex-center">
@@ -520,6 +589,7 @@ export class Background {
             this.tagsElement.classList.remove("fn__none");
             this.actionElements[0].classList.add("fn__none");
         } else {
+            this.tagsElement.innerHTML = "";
             this.tagsElement.classList.add("fn__none");
             this.actionElements[0].classList.remove("fn__none");
         }

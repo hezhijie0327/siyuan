@@ -323,13 +323,6 @@ export class Files extends Model {
                                     x: event.clientX,
                                     y: event.clientY
                                 });
-                            } else if (type === "addLocal") {
-                                fetchPost("/api/filetree/moveLocalShorthands", {
-                                    "notebook": notebookId
-                                });
-                                this.element.querySelectorAll('[data-type="addLocal"]').forEach(item => {
-                                    item.remove();
-                                });
                             }
                         }
                         if (type === "more-file") {
@@ -445,6 +438,7 @@ export class Files extends Model {
             }
         });
         this.element.addEventListener("dragstart", (event: DragEvent & { target: HTMLElement }) => {
+            if (window.siyuan.config.readonly) return;
             window.getSelection().removeAllRanges();
             hideTooltip();
             const liElement = hasClosestByTag(event.target, "LI");

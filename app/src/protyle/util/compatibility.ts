@@ -8,7 +8,7 @@ import * as fs from "fs";
 /// #if MOBILE
 import {processSYLink} from "../../editor/openLink";
 /// #endif
-import {getDefaultType} from "../../search/getDefault";
+import {getDefaultSubType, getDefaultType} from "../../search/getDefault";
 import {showMessage} from "../../dialog/message";
 
 export const isPhablet = () => {
@@ -106,10 +106,13 @@ export const saveExportFile = (uri: string) => {
     }
     if (isInAndroid()) {
         window.JSAndroid.saveExportFile(uri);
+        showMessage(window.siyuan.languages.exported);
     } else if (isInIOS()) {
-        openByMobile(uri);
+        window.webkit.messageHandlers.saveExportFile.postMessage(uri);
+        showMessage(window.siyuan.languages.exported);
     } else if (isInHarmony()) {
-        window.JSHarmony.openExternal(uri);
+        window.JSHarmony.saveExportFile(uri);
+        showMessage(window.siyuan.languages.exported);
     } else {
         window.open(uri);
     }
@@ -120,7 +123,7 @@ export const saveZipExport = async (zipPath: string) => {
         return;
     }
     /// #if !BROWSER
-    const fileName = zipPath.substring(zipPath.lastIndexOf("/") + 1);
+    const fileName = decodeURIComponent(zipPath.substring(zipPath.lastIndexOf("/") + 1));
     const result = await ipcRenderer.invoke(Constants.SIYUAN_GET, {
         cmd: "showSaveDialog",
         defaultPath: fileName,
@@ -136,21 +139,6 @@ export const saveZipExport = async (zipPath: string) => {
     /// #else
     saveExportFile(zipPath);
     /// #endif
-};
-
-export const exportByMobile = (uri: string) => {
-    if (!uri) {
-        return;
-    }
-    if (isInIOS()) {
-        openByMobile(uri);
-    } else if (isInAndroid()) {
-        window.JSAndroid.saveExportFile(uri);
-    } else if (isInHarmony()) {
-        window.JSHarmony.exportByDefault(uri);
-    } else {
-        window.open(uri);
-    }
 };
 
 export const readText = () => {
@@ -566,6 +554,7 @@ export const getLocalStorage = (cb: () => void) => {
             k: "",
             r: "",
             types: getDefaultType(),
+            subTypes: getDefaultSubType(),
             replaceTypes: Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES),
         };
         defaultStorage[Constants.LOCAL_ZOOM] = 1;
@@ -600,6 +589,11 @@ export const getLocalStorage = (cb: () => void) => {
         if (!window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes ||
             Object.keys(window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes).length === 0) {
             window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes = Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES);
+        }
+        // Migrate stored search data to include subTypes when absent
+        if (!window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes ||
+            Object.keys(window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes).length === 0) {
+            window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes = getDefaultSubType();
         }
         cb();
     });

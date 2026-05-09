@@ -287,6 +287,8 @@ declare namespace Config {
         | "es_ES"
         | "fr_FR"
         | "he_IL"
+        | "hi_IN"
+        | "id_ID"
         | "it_IT"
         | "ja_JP"
         | "ko_KR"
@@ -296,6 +298,8 @@ declare namespace Config {
         | "sk_SK"
         | "tr_TR"
         | "uk_UA"
+        | "th_TH"
+        | "nl_NL"
         | "zh_CN"
         | "zh_CHT";
 
@@ -681,6 +685,14 @@ declare namespace Config {
          */
         refCreateSavePath: string;
         refCreateSaveBox: string;
+        /**
+         * Shorthand save notebook
+         */
+        shorthandSaveBox: string;
+        /**
+         * Shorthand save path
+         */
+        shorthandSavePath: string;
         docCreateSaveBox: string;
         /**
          * Close the secondary confirmation when deleting a document
@@ -2218,6 +2230,26 @@ declare namespace Config {
          */
         sort?: number;
         types?: IUILayoutTabSearchConfigTypes;
+        subTypes?: IUILayoutTabSearchConfigSubTypes;
+    }
+
+    /**
+     * Search subtype filtering. When all flags within a category (heading or
+     * list) are false, that category is not subtype-filtered (parent type
+     * filter applies as before). When at least one flag is true, only blocks
+     * matching the selected subtypes are returned for that category.
+     */
+    export interface IUILayoutTabSearchConfigSubTypes {
+        h1: boolean;
+        h2: boolean;
+        h3: boolean;
+        h4: boolean;
+        h5: boolean;
+        h6: boolean;
+        // List subtypes — apply to both list and listItem
+        o: boolean;
+        u: boolean;
+        t: boolean;
     }
 
     /**

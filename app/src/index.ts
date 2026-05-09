@@ -33,9 +33,6 @@ import {loadPlugins, reloadPlugin} from "./plugin/loader";
 import "./assets/scss/base.scss";
 import {reloadEmoji} from "./emoji";
 import {processIOSPurchaseResponse} from "./util/iOSPurchase";
-/// #if BROWSER
-import {setLocalShorthandCount} from "./util/noRelyPCFunction";
-/// #else
 import {ipcRenderer} from "electron";
 /// #endif
 import {getDockByType} from "./layout/tabUtil";
@@ -95,11 +92,6 @@ export class App {
                                     (getDockByType("tag").data.tag as Tag).update();
                                 }
                                 break;
-                            /// #if BROWSER
-                            case "setLocalShorthandCount":
-                                setLocalShorthandCount();
-                                break;
-                            /// #endif
                             case "setRefDynamicText":
                                 setRefDynamicText(data.data);
                                 break;
@@ -138,7 +130,22 @@ export class App {
                                 progressLoading(data);
                                 break;
                             case "setLocalStorageVal":
-                                window.siyuan.storage[data.data.key] = data.data.val;
+                                if (window.siyuan.storage) {
+                                    window.siyuan.storage[data.data.key] = data.data.val;
+                                }
+                                break;
+                            case "setLocalStorageVals":
+                                Object.keys(data.data.keyVals).forEach((k) => {
+                                    window.siyuan.storage[k] = data.data.keyVals[k];
+                                });
+                                break;
+                            case "removeLocalStorageVal":
+                                delete window.siyuan.storage[data.data.key];
+                                break;
+                            case "removeLocalStorageVals":
+                                data.data.keys.forEach((k: string) => {
+                                    delete window.siyuan.storage[k];
+                                });
                                 break;
                             case "rename":
                                 getAllTabs().forEach((tab) => {

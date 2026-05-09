@@ -7,7 +7,7 @@ import {Custom} from "../layout/dock/Custom";
 import {getAllEditor, getAllModels} from "../layout/getAll";
 import {Tab} from "../layout/Tab";
 import {resizeTopBar, setPanelFocus} from "../layout/util";
-import {getDockByType} from "../layout/tabUtil";
+import {getDockByType, setTabPosition} from "../layout/tabUtil";
 ///#else
 import {MobileCustom} from "../mobile/dock/MobileCustom";
 /// #endif
@@ -19,7 +19,6 @@ import {Constants} from "../constants";
 import {uninstall} from "./uninstall";
 import {addPluginDock, afterLoadPlugin, loadPlugins} from "./loader";
 import {normalizeStoragePath} from "../util/pathName";
-import {setTabPosition} from "../window/setHeader";
 
 export class Plugin {
     private app: App;
@@ -225,7 +224,9 @@ export class Plugin {
             iconElement.addEventListener("click", options.callback);
             iconElement.setAttribute("data-location", options.position || "right");
             resizeTopBar();
+            /// #if !MOBILE
             setTabPosition(true);
+            /// #endif
         }
         if (isMobile() && window.siyuan.storage) {
             if (!window.siyuan.storage[Constants.LOCAL_PLUGINTOPUNPIN].includes(iconElement.id)) {

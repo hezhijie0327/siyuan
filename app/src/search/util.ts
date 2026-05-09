@@ -41,7 +41,7 @@ import {resize} from "../protyle/util/resize";
 import {addClearButton} from "../util/addClearButton";
 import {checkFold} from "../util/noRelyPCFunction";
 import {getUnRefList, openSearchUnRef, unRefMoreMenu} from "./unRef";
-import {getDefaultType} from "./getDefault";
+import {getDefaultSubType, getDefaultType} from "./getDefault";
 import {isSupportCSSHL, searchMarkRender} from "../protyle/render/searchMarkRender";
 import {saveKeyList, toggleAssetHistory, toggleReplaceHistory, toggleSearchHistory} from "./toggleHistory";
 import {highlightById} from "../util/highlightById";
@@ -72,6 +72,7 @@ export const openGlobalSearch = (app: App, text: string, replace: boolean, searc
             group: localData.group,
             sort: localData.sort,
             types: Object.assign({}, localData.types),
+            subTypes: Object.assign({}, localData.subTypes),
             replaceTypes: Object.assign({}, localData.replaceTypes),
             removed: localData.removed,
             page: 1
@@ -282,7 +283,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
         }
     }
     let clickTimeout: number;
-    let lastClickTime = new Date().getTime();
+    let lastClickTime = Date.now();
 
     searchInputElement.value = config.k || "";
     replaceInputElement.value = config.r || "";
@@ -357,6 +358,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
                     r: "",
                     page: 1,
                     types: getDefaultType(),
+                    subTypes: getDefaultSubType(),
                     replaceTypes: Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES),
                 }, config, edit, true);
                 element.querySelector(".b3-chip--current")?.classList.remove("b3-chip--current");
@@ -423,6 +425,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
                         r: "",
                         page: 1,
                         types: getDefaultType(),
+                        subTypes: getDefaultSubType(),
                         replaceTypes: Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES),
                     }, config, edit, true);
                 }
@@ -623,6 +626,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
                         r: "",
                         page: 1,
                         types: getDefaultType(),
+                        subTypes: getDefaultSubType(),
                         replaceTypes: Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES),
                     }, config, edit, true);
                     element.querySelector("#criteria .b3-chip--current")?.classList.remove("b3-chip--current");
@@ -803,7 +807,7 @@ export const genSearch = (app: App, config: Config.IUILayoutTabSearchConfig, ele
                     let isDblClick = event.detail === 2;
                     /// #if BROWSER
                     if (isIPad()) { // 需要进行 ipad 判断 https://github.com/siyuan-note/siyuan/issues/12704
-                        const newDate = new Date().getTime();
+                        const newDate = Date.now();
                         isClick = newDate - lastClickTime > Constants.TIMEOUT_DBLCLICK;
                         isDblClick = !isClick;
                         lastClickTime = newDate;
@@ -1154,6 +1158,7 @@ export const getArticle = (options: {
                 query: options.value || null,
                 queryMethod: options.config?.method || null,
                 queryTypes: options.config?.types || null,
+                querySubTypes: options.config?.subTypes || null,
                 mode: zoomIn ? 0 : 3,
                 size: zoomIn ? Constants.SIZE_GET_MAX : window.siyuan.config.editor.dynamicLoadBlocks,
                 zoom: zoomIn,
@@ -1166,6 +1171,7 @@ export const getArticle = (options: {
                     key: options.value || null,
                     method: options.config?.method || null,
                     types: options.config?.types || null,
+                    subTypes: options.config?.subTypes || null,
                 };
                 // https://ld246.com/article/1770132984152
                 if (options.edit.protyle.options.render.title) {
@@ -1249,6 +1255,7 @@ export const replace = (element: Element, config: Config.IUILayoutTabSearchConfi
         r: replaceInputElement.value,
         method: config.method,
         types: config.types,
+        subTypes: config.subTypes,
         paths: config.idPath || [],
         groupBy: config.group,
         orderBy: config.sort,
@@ -1339,6 +1346,7 @@ export const inputEvent = (element: Element, config: Config.IUILayoutTabSearchCo
                 query: config.query,
                 method: config.method,
                 types: config.types,
+                subTypes: config.subTypes,
                 paths: config.idPath || [],
                 groupBy: config.group,
                 orderBy: config.sort,
