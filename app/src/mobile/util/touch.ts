@@ -10,6 +10,7 @@ import {activeBlur} from "./keyboardToolbar";
 import {isChromeBrowser, isIPhone} from "../../protyle/util/compatibility";
 import {getRangeByPoint} from "../../protyle/util/selection";
 import {getCurrentEditor} from "../editor";
+import {Constants} from "../../constants";
 
 let clientX: number;
 let clientY: number;
@@ -34,17 +35,47 @@ const popSide = (render = true) => {
 export const handleTouchEnd = (event: TouchEvent) => {
     const target = event.target as HTMLElement;
     const currentTime = Date.now();
-    if (!window.siyuan.touchDragActive && isIPhone() && !isChromeBrowser() && typeof yDiff === "undefined" &&
-        currentTime - time > 900 && currentTime - time < 2000) {
-        target.dispatchEvent(new MouseEvent("contextmenu", {
-            bubbles: true,
-            cancelable: true,
-            clientX: event.changedTouches[0].clientX,
-            clientY: event.changedTouches[0].clientY,
-        }));
-        event.stopImmediatePropagation();
-        event.preventDefault();
-        return;
+    const editor = getCurrentEditor();
+    if (Math.abs(clientX - event.changedTouches[0].clientX) < 5 && Math.abs(clientY - event.changedTouches[0].clientY) < 5) {
+        if (editor && editor.protyle.toolbar.isMultiSelectMode()) {
+            // 多选模式
+            const blockElement = hasClosestBlock(target);
+            if (blockElement) {
+                blockElement.querySelectorAll(".protyle-wysiwyg--select").forEach(item => {
+                    item.classList.remove("protyle-wysiwyg--select");
+                });
+                const blockParentElement = hasClosestByClassName(blockElement.parentElement, "protyle-wysiwyg--select");
+                if (blockParentElement) {
+                    blockParentElement.classList.remove("protyle-wysiwyg--select");
+                }
+                blockElement.classList.toggle("protyle-wysiwyg--select");
+                editor.protyle.toolbar.subElement.querySelector(".multiSelectCount").textContent =
+                    editor.protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select").length.toString();
+                event.stopImmediatePropagation();
+                event.preventDefault();
+            }
+        } else if (currentTime - time > Constants.TIMEOUT_LONGPRESS) {
+            // 长按
+            if (isIPhone() && !isChromeBrowser() && !window.siyuan.touchDragActive) {
+                target.dispatchEvent(new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: event.changedTouches[0].clientX,
+                    clientY: event.changedTouches[0].clientY,
+                }));
+            }
+            // 超长按
+            if (currentTime - time > 2000) {
+                const blockElement = hasClosestBlock(target);
+                if (blockElement) {
+                    const protyle = editor.protyle;
+                    protyle.toolbar.showMultiSelectMode(protyle, blockElement);
+                }
+            }
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return;
+        }
     }
 
     if (typeof yDiff === "undefined" && window.siyuan.mobile.editor.protyle.options.render.gutter) {
@@ -176,18 +207,16 @@ export const handleTouchStart = (event: TouchEvent) => {
     if ((otherTouchElement && otherTouchElement.parentElement.classList.contains("b3-chips__doctag")) ||
         target.closest(".protyle-gutters") ||
         target.closest(".av__gallery") ||
-        target.closest('[style^="--file-toggle-width"]') ||
         (target.tagName === "IMG" && target.style.cursor === "move" && target.parentElement.classList.contains("protyle-background__img"))) {
         clientX = null;
         clientY = null;
         return;
     }
-    if (getSelection().rangeCount > 0 && hasClosestBlock(event.target as Element)) {
-        const editor = getCurrentEditor();
-        if (editor && !editor.protyle.disabled && event.touches[0].clientY > window.innerHeight / 2 &&
-            document.querySelector("#keyboardToolbar").classList.contains("fn__none")) {
-            window.siyuan.mobile.touchRange = getRangeByPoint(event.touches[0].clientX, event.touches[0].clientY);
-        }
+    const editor = getCurrentEditor();
+    if (getSelection().rangeCount > 0 && hasClosestBlock(event.target as Element) &&
+        editor && !editor.protyle.disabled && event.touches[0].clientY > window.innerHeight / 2 &&
+        document.querySelector("#keyboardToolbar").classList.contains("fn__none")) {
+        window.siyuan.mobile.touchRange = getRangeByPoint(event.touches[0].clientX, event.touches[0].clientY);
     }
 
     firstDirection = null;
@@ -214,6 +243,7 @@ export const handleTouchMove = (event: TouchEvent) => {
     const target = event.target as HTMLElement;
     if (!clientX || !clientY ||
         target.tagName === "AUDIO" ||
+        document.getElementById("dragGhost") ||
         hasClosestByClassName(target, "b3-dialog", true) ||
         (window.siyuan.mobile.editor && !window.siyuan.mobile.editor.protyle.toolbar.subElement.classList.contains("fn__none")) ||
         hasClosestByClassName(target, "keyboard") ||

@@ -204,6 +204,10 @@ func MoveLocalShorthands(boxID string) (retIDs []string, err error) {
 }
 
 func consumeShorthands() {
+	if !util.IsMobileContainer() {
+		return
+	}
+
 	defer logging.Recover()
 
 	shorthandsDir := filepath.Join(util.ShortcutsPath, "shorthands")

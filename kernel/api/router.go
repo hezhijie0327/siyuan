@@ -283,7 +283,7 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/cloud/getCloudSpace", model.CheckAuth, model.CheckAdminRole, getCloudSpace)
 
 	ginServer.Handle("POST", "/api/sync/setSyncEnable", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, setSyncEnable)
-	ginServer.Handle("POST", "/api/sync/setSyncInterval", model.CheckAuth, setSyncInterval)
+	ginServer.Handle("POST", "/api/sync/setSyncInterval", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, setSyncInterval)
 	ginServer.Handle("POST", "/api/sync/setSyncPerception", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, setSyncPerception)
 	ginServer.Handle("POST", "/api/sync/setSyncGenerateConflictDoc", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, setSyncGenerateConflictDoc)
 	ginServer.Handle("POST", "/api/sync/setSyncMode", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, setSyncMode)
@@ -441,6 +441,7 @@ func ServeAPI(ginServer *gin.Engine) {
 	ginServer.Handle("POST", "/api/repo/tagSnapshot", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, tagSnapshot)
 	ginServer.Handle("POST", "/api/repo/checkoutRepo", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, checkoutRepo)
 	ginServer.Handle("POST", "/api/repo/getRepoSnapshots", model.CheckAuth, model.CheckAdminRole, getRepoSnapshots)
+	ginServer.Handle("POST", "/api/repo/searchRepoFile", model.CheckAuth, model.CheckAdminRole, searchRepoFile)
 	ginServer.Handle("POST", "/api/repo/getRepoTagSnapshots", model.CheckAuth, model.CheckAdminRole, getRepoTagSnapshots)
 	ginServer.Handle("POST", "/api/repo/removeRepoTagSnapshot", model.CheckAuth, model.CheckAdminRole, model.CheckReadonly, removeRepoTagSnapshot)
 	ginServer.Handle("POST", "/api/repo/getCloudRepoTagSnapshots", model.CheckAuth, model.CheckAdminRole, getCloudRepoTagSnapshots)
