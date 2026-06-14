@@ -35,10 +35,10 @@ func NewSync() *Sync {
 	return &Sync{
 		CloudName:           "main",
 		Enabled:             false,
-		Perception:          false,
+		Perception:          true,
 		Mode:                1,
-		GenerateConflictDoc: false,
-		Provider:            ProviderSiYuan,
+		GenerateConflictDoc: true,
+		Provider:            ProviderS3,
 		Interval:            30,
 	}
 }
