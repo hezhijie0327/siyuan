@@ -40,11 +40,10 @@ const genAboutVersionHtml = (): string => {
     return `<div class="fn__flex b3-label config-item config-wrap">
     <div class="fn__flex-1">
         <div class="config-name">${window.siyuan.languages.currentVer} v${Constants.SIYUAN_VERSION}<span id="isInsider"></span></div>
-        <div class="b3-label__text">${window.siyuan.languages.downloadLatestVer}</div>
     </div>
     <div class="fn__space"></div>
     <div class="fn__flex-center fn__size200">
-        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block">
+        <button id="checkUpdateBtn" class="b3-button b3-button--outline fn__block" disabled>
             <svg><use xlink:href="#iconRefresh"></use></svg>${window.siyuan.languages.checkUpdate}
         </button>
     </div>
