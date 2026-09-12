@@ -249,8 +249,9 @@ func SetBooted() {
 }
 
 var (
-	HomeDir, _    = gulu.OS.Home()
-	WorkingDir, _ = os.Getwd()
+	HomeDir, _  = gulu.OS.Home()
+	ExecPath, _ = os.Executable()
+	WorkingDir  = filepath.Dir(ExecPath)
 
 	WorkspaceDir       string        // 工作空间目录路径
 	WorkspaceName      string        // 工作空间名称
