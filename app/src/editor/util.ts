@@ -1,3 +1,4 @@
+import type {FileTreeGetDocRequestInput} from "../types/api";
 import {isPhablet} from "../protyle/util/compatibility";
 import {Tab} from "../layout/Tab";
 import {Editor} from "./index";
@@ -40,7 +41,9 @@ import {forEachPluginSubscriber} from "../plugin/EventBusCore";
 import {getHostCapabilities} from "../util/hostCapabilities";
 import {revealTabsForTarget} from "../protyle/render/tabsRender";
 import {isHiddenTabContent} from "../protyle/render/tabsVisibility";
+import {confirmDialog} from "../dialog/confirmDialog";
 import {shouldCheckOtherWindows} from "./openFileWindow";
+import {getContenteditableElement} from "../protyle/wysiwyg/getBlock";
 
 const isSameCustomTab = (type: string, data: any, options: IOpenFileOptions) => {
     if (!options.custom || (options.custom.id && options.custom.id !== type)) {
@@ -83,6 +86,9 @@ export const openFileById = async (options: {
     }
     if (response.code === 3) {
         showMessage(response.msg);
+        return;
+    }
+    if (response.code !== 0) {
         return;
     }
     const zoomIn = options.zoomIn === true && options.id !== response.data.rootID;
@@ -413,6 +419,33 @@ const getUnInitTab = (options: IOpenFileOptions) => {
     });
 };
 
+const pushBackByEditor = (protyle: IProtyle, block?: Element) => {
+    // 浏览页签时记录位置，不聚焦编辑器，避免唤起软键盘。
+    const range = protyle.toolbar.range;
+    const container = block || protyle.element;
+    if (range && container.contains(range.startContainer) && container.contains(range.endContainer)) {
+        if (!block && protyle.title?.editElement?.contains(range.startContainer) &&
+            protyle.title.editElement.contains(range.endContainer)) {
+            block = protyle.title.editElement;
+        }
+        pushBack(protyle, range, block);
+    } else {
+        block = block || protyle.wysiwyg.element.firstElementChild;
+        let editable = block && getContenteditableElement(block);
+        if (!editable) {
+            // 空正文或不可编辑的首块仍需记录文档导航，使用标题作为定位入口。
+            block = protyle.title?.editElement;
+            editable = block;
+        }
+        if (editable) {
+            const initialRange = document.createRange();
+            initialRange.selectNodeContents(editable);
+            initialRange.collapse(true);
+            pushBack(protyle, initialRange, block);
+        }
+    }
+};
+
 const switchEditor = (editor: Editor, options: IOpenFileOptions, allModels: IModels) => {
     if (options.keepCursor) {
         editor.parent.headElement.setAttribute("keep-cursor", options.id);
@@ -438,7 +471,7 @@ const switchEditor = (editor: Editor, options: IOpenFileOptions, allModels: IMod
         revealTabsForTarget(nodeElement);
     }
     if ((!nodeElement || nodeElement?.clientHeight === 0) && options.id !== options.rootID) {
-        const getDocParam: IObject = {
+        const getDocParam: FileTreeGetDocRequestInput = {
             id: options.id,
             mode: (options.action && options.action.includes(Constants.CB_GET_CONTEXT)) ? 3 : 0,
             size: window.siyuan.config.editor.dynamicLoadBlocks,
@@ -520,6 +553,11 @@ const switchEditor = (editor: Editor, options: IOpenFileOptions, allModels: IMod
                     passive: true,
                     signal: userScrollAbort.signal
                 });
+                // 开始编辑后停止定位补偿，避免输入改变布局时把光标滚回原位置
+                editor.editor.protyle.element.addEventListener("beforeinput", stopObserve, {
+                    capture: true,
+                    signal: userScrollAbort.signal
+                });
                 editor.editor.protyle.contentElement.addEventListener("keydown", (event: KeyboardEvent) => {
                     if (["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "].includes(event.key)) {
                         stopObserve();
@@ -538,7 +576,11 @@ const switchEditor = (editor: Editor, options: IOpenFileOptions, allModels: IMod
                 scrollCenter(editor.editor.protyle, undefined, options.scrollPosition);
             }
         }
-        pushBack(editor.editor.protyle, editor.editor.protyle.toolbar.range);
+        if (isPhablet()) {
+            pushBackByEditor(editor.editor.protyle, nodeElement);
+        } else {
+            pushBack(editor.editor.protyle, editor.editor.protyle.toolbar.range);
+        }
     }
     // https://github.com/siyuan-note/siyuan/issues/16445
     if (options.action?.includes(Constants.CB_GET_OUTLINE)) {
@@ -683,6 +725,9 @@ export const updatePanelByEditor = (options: {
                 countBlockWord([], options.protyle);
             }
         }
+        if (!options.focus && options.pushBackStack && options.protyle.preview.element.classList.contains("fn__none")) {
+            pushBackByEditor(options.protyle);
+        }
         if (window.siyuan.config.fileTree.alwaysSelectOpenedFile && options.protyle) {
             const fileModel = getDockByType("file")?.data.file;
             if (fileModel instanceof Files) {
@@ -751,7 +796,7 @@ export const updateOutline = (models: IModels, protyle: IProtyle, reload = false
                 item.isPreview = !protyle.preview.element.classList.contains("fn__none");
                 item.update(response, blockId, protyle?.notebookId || "");
                 if (protyle) {
-                    item.updateDocTitle(protyle.background.ial, response.data?.length || 0);
+                    item.updateDocTitle(protyle.background.ial, Array.isArray(response.data) ? response.data.length : 0);
                     if (getSelection().rangeCount > 0) {
                         const startContainer = getSelection().getRangeAt(0).startContainer;
                         if (protyle.wysiwyg.element.contains(startContainer)) {
@@ -833,13 +878,20 @@ export const openBy = (url: string, type: "folder" | "app") => {
     }
     /// #if !BROWSER
     if (url.startsWith("assets/")) {
-        fetchPost("/api/asset/resolveAssetPath", {path: url.replace(/\.pdf\?page=\d{1,}$/, ".pdf")}, (response) => {
-            if (type === "app") {
-                useShell("openPath", response.data);
-            } else if (type === "folder") {
-                useShell("showItemInFolder", response.data);
-            }
-        });
+        const open = () => {
+            fetchPost("/api/asset/resolveAssetPath", {path: url.replace(/\.pdf\?page=\d{1,}$/, ".pdf")}, (response) => {
+                if (type === "app") {
+                    useShell("openPath", response.data);
+                } else if (type === "folder") {
+                    useShell("showItemInFolder", response.data);
+                }
+            });
+        };
+        if (isEncryptedBox(new URL(url, window.location.origin).searchParams.get("box"))) {
+            confirmDialog("⚠️ " + window.siyuan.languages.openBy, window.siyuan.languages.encryptedAssetExternalOpenTip, open);
+        } else {
+            open();
+        }
         return;
     }
     let address = "";

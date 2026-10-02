@@ -1,3 +1,4 @@
+import type {FileTreeGetDocRequestInput} from "../types/api";
 import {Constants} from "../constants";
 import {Hint} from "./hint";
 import {getLute} from "./render/setLute";
@@ -14,6 +15,7 @@ import {genUUID} from "../util/genID";
 import {WYSIWYG} from "./wysiwyg";
 import {Toolbar} from "./toolbar";
 import {Gutter} from "./gutter";
+import {setAutoDirection} from "./render/autoDirection";
 import {Breadcrumb} from "./breadcrumb";
 import {
     onTransaction,
@@ -71,6 +73,8 @@ import {
     queueDatabaseRowRefreshForOperations
 } from "./render/av/databaseRowRefresh";
 import {initEditorTabs} from "./wysiwyg/tabs";
+import {initListMindmaps} from "./render/listMindmap";
+import {initFoldedRender} from "./util/foldedRender";
 import {registerCustomBlockRoot} from "../plugin/customBlockRender";
 import {getTransactionOperations} from "../util/transactionOperations";
 import {
@@ -207,7 +211,10 @@ export class Protyle {
         // lite 模式用前端操作日志 undo（不依赖 kernel），其余走 kernel 的 GlobalUndoLog。
         this.protyle.undo = this.protyle.lite ? new LocalUndo() : new Undo();
         this.protyle.wysiwyg = new WYSIWYG(this.protyle);
+        setAutoDirection(this.protyle.wysiwyg.element, window.siyuan.config.editor.autoDirection);
+        initFoldedRender(this.protyle);
         initEditorTabs(this.protyle);
+        initListMindmaps(this.protyle);
         if (isProtyleCustomBlockRenderEnabled(this.protyle)) {
             registerCustomBlockRoot(this.protyle.wysiwyg.element, {
                 disabled: () => this.protyle.disabled,
@@ -281,7 +288,7 @@ export class Protyle {
                         case "li2doc":
                             if (this.protyle.block.rootID === data.data.srcRootBlockID) {
                                 if (this.protyle.block.showAll && data.cmd === "heading2doc" && !this.protyle.options.backlinkData) {
-                                    const getDocParam: IObject = {
+                                    const getDocParam: FileTreeGetDocRequestInput = {
                                         id: this.protyle.block.rootID,
                                         size: window.siyuan.config.editor.dynamicLoadBlocks,
                                     };
@@ -432,11 +439,16 @@ export class Protyle {
             if (!options.blockId) {
                 // 搜索页签需提前初始化
                 removeLoading(this.protyle);
+                if (this.protyle.lite) {
+                    resize(this.protyle);
+                }
                 return;
             }
 
+            const savedScroll = options.scrollAttr?.rootId === options.rootId ? options.scrollAttr :
+                window.siyuan.storage?.[Constants.LOCAL_FILEPOSITION]?.[options.rootId];
             if (this.protyle.options.mode !== "preview" &&
-                options.rootId && window.siyuan.storage[Constants.LOCAL_FILEPOSITION][options.rootId] &&
+                options.rootId && savedScroll &&
                 (
                     mergedOptions.action.includes(Constants.CB_GET_SCROLL) ||
                     (mergedOptions.action.includes(Constants.CB_GET_ROOTSCROLL) && options.rootId === options.blockId)
@@ -444,7 +456,7 @@ export class Protyle {
             ) {
                 getDocByScroll({
                     protyle: this.protyle,
-                    scrollAttr: window.siyuan.storage[Constants.LOCAL_FILEPOSITION][options.rootId],
+                    scrollAttr: savedScroll,
                     mergedOptions,
                     cb: () => {
                         this.afterOnGet(mergedOptions);
@@ -536,7 +548,7 @@ export class Protyle {
     }
 
     private getDoc(mergedOptions: IProtyleOptions) {
-        const getDocParam: Record<string, any> = {
+        const getDocParam: FileTreeGetDocRequestInput = {
             id: mergedOptions.blockId,
             includeDocInfo: true,
             isBacklink: mergedOptions.action.includes(Constants.CB_GET_BACKLINK),
@@ -583,7 +595,7 @@ export class Protyle {
         resize(this.protyle);   // 需等待 fullwidth 获取后设定完毕再重新计算 padding 和元素
         // 需等待 getDoc 完成后再执行，否则在无页签的时候 updatePanelByEditor 会执行2次
         // 只能用 focusin，否则点击表格无法执行
-        this.protyle.wysiwyg.element.addEventListener("focusin", () => {
+        const activateEditorPanel = () => {
             /// #if !MOBILE
             if (this.protyle && this.protyle.model) {
                 let needUpdate = true;
@@ -611,7 +623,10 @@ export class Protyle {
                 });
             }
             /// #endif
-        });
+        };
+        this.protyle.wysiwyg.element.addEventListener("focusin", activateEditorPanel);
+        this.protyle.databaseAttributePanel?.element.addEventListener("focusin", activateEditorPanel);
+        this.protyle.databaseAttributePanel?.element.addEventListener("pointerdown", activateEditorPanel);
         // 需等渲染完后再回调，用于定位搜索字段 https://github.com/siyuan-note/siyuan/issues/3171
         if (mergedOptions.after) {
             mergedOptions.after(this);

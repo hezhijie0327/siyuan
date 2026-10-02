@@ -1,3 +1,4 @@
+import type {FileTreeGetDocRequestInput} from "../../types/api";
 import {matchHotKey} from "../util/hotKey";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
 import {isMac, writeText} from "../util/compatibility";
@@ -16,6 +17,7 @@ import {hasClosestByTag, hasTopClosestByClassName} from "../util/hasClosest";
 import {removeEmbed} from "./removeEmbed";
 import {clearBlockElement} from "../util/clear";
 import {remapTabsDOMIDs} from "../util/tabsCopy";
+import {remapListMindmapIDs} from "../render/listMindmap/model";
 import {isEncryptedBox} from "../../util/pathName";
 import {normalizeHTMLAssetIFrameBlockDOM} from "../../asset/html";
 import {captureCommandContext} from "../../command/context";
@@ -298,6 +300,9 @@ export const duplicateBlock = async (nodeElements: Element[], protyle: IProtyle)
                 id: item.getAttribute("data-node-id"),
                 notebook: protyle.notebookId,
             });
+            if (response.code !== 0) {
+                return;
+            }
             const foldTempElement = document.createElement("template");
             foldTempElement.innerHTML = normalizeHTMLAssetIFrameBlockDOM(response.data.dom);
             tempElement = foldTempElement.content.firstElementChild as HTMLElement;
@@ -335,6 +340,7 @@ export const duplicateBlock = async (nodeElements: Element[], protyle: IProtyle)
             clearBlockElement(childItem);
         });
         remapTabsDOMIDs(tempElement, copiedIDs);
+        remapListMindmapIDs(tempElement, copiedIDs);
         if (typeof starIndex === "number") {
             const orderIndex = starIndex + index + 1;
             tempElement.setAttribute("data-marker", (orderIndex) + ".");
@@ -357,6 +363,9 @@ export const duplicateBlock = async (nodeElements: Element[], protyle: IProtyle)
                 id: item.getAttribute("data-node-id"),
                 removeFoldAttr: false,
             });
+            if (responseHTML.code !== 0) {
+                throw new Error(responseHTML.msg);
+            }
             const foldElement = document.createElement("template");
             foldElement.innerHTML = normalizeHTMLAssetIFrameBlockDOM(responseHTML.data);
             let previousID = newId;
@@ -374,6 +383,7 @@ export const duplicateBlock = async (nodeElements: Element[], protyle: IProtyle)
                 childItem.setAttribute("data-node-id", newChildId);
                 clearBlockElement(childItem);
                 remapTabsDOMIDs(childItem, foldedIDs);
+                remapListMindmapIDs(childItem, foldedIDs);
                 doOperations.push({
                     context: {
                         ignoreProcess: "true"
@@ -425,15 +435,17 @@ export const duplicateBlock = async (nodeElements: Element[], protyle: IProtyle)
     scrollCenter(protyle);
 };
 
-export const goHome = (protyle: IProtyle) => {
+export const goHome = (protyle: IProtyle, focusEditor = true) => {
     if (protyle.wysiwyg.element.firstElementChild.getAttribute("data-node-index") === "0" ||
         protyle.wysiwyg.element.firstElementChild.getAttribute("data-eof") === "1" ||
         protyle.options.backlinkData) {
-        focusBlock(protyle.wysiwyg.element.firstElementChild);
+        if (focusEditor) {
+            focusBlock(protyle.wysiwyg.element.firstElementChild);
+        }
         protyle.contentElement.scrollTop = 0;
         protyle.scroll.lastScrollTop = 1;
     } else {
-        const getDocParam: IObject = {
+        const getDocParam: FileTreeGetDocRequestInput = {
             id: protyle.block.rootID,
             mode: 0,
             size: window.siyuan.config.editor.dynamicLoadBlocks,
@@ -442,15 +454,20 @@ export const goHome = (protyle: IProtyle) => {
             getDocParam.notebook = protyle.notebookId;
         }
         fetchPost("/api/filetree/getDoc", getDocParam, getResponse => {
-            onGet({data: getResponse, protyle, action: [Constants.CB_GET_FOCUS]});
+            onGet({
+                data: getResponse,
+                protyle,
+                action: [Constants.CB_GET_FOCUS],
+                suppressFocus: !focusEditor,
+            });
         });
     }
 };
 
-export const goEnd = (protyle: IProtyle) => {
+export const goEnd = (protyle: IProtyle, focusEditor = true) => {
     if (!protyle.scroll.element.classList.contains("fn__none") &&
         protyle.wysiwyg.element.lastElementChild.getAttribute("data-eof") !== "2") {
-        const getDocParam: IObject = {
+        const getDocParam: FileTreeGetDocRequestInput = {
             id: protyle.block.rootID,
             mode: 4,
             size: window.siyuan.config.editor.dynamicLoadBlocks,
@@ -463,15 +480,20 @@ export const goEnd = (protyle: IProtyle) => {
                 data: getResponse,
                 protyle,
                 action: [Constants.CB_GET_FOCUS],
+                suppressFocus: !focusEditor,
                 afterCB() {
-                    focusBlock(protyle.wysiwyg.element.lastElementChild, undefined, false);
+                    if (focusEditor) {
+                        focusBlock(protyle.wysiwyg.element.lastElementChild, undefined, false);
+                    }
                 }
             });
         });
     } else {
         protyle.contentElement.scrollTop = protyle.contentElement.scrollHeight;
         protyle.scroll.lastScrollTop = protyle.contentElement.scrollTop;
-        focusBlock(protyle.wysiwyg.element.lastElementChild, undefined, false);
+        if (focusEditor) {
+            focusBlock(protyle.wysiwyg.element.lastElementChild, undefined, false);
+        }
     }
 };
 

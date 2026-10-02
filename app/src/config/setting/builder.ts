@@ -40,7 +40,7 @@ interface ItemsSettingTabOptions<TId extends string = string> extends SettingTab
 
 interface PanelSettingTabOptions<TId extends string = string> extends SettingTabShell<TId> {
     searchStrings: () => string[];
-    mount: (root: HTMLElement, keywords?: string, app?: App) => void | Promise<void>;
+    mount: (root: HTMLElement, keywords?: string, app?: App, rebuild?: boolean) => void | Promise<void>;
 }
 
 type ControlSpecBase = {
@@ -75,6 +75,7 @@ type SelectSpec = ControlSpecBase & {
 };
 type TextSpec = ControlSpecBase & {
     desc: string;
+    spellcheck?: boolean;
 };
 type TextBlockSpec = TextSpec & {
     mode: "input-text" | "input-password" | "textarea";
@@ -134,6 +135,7 @@ type StackSwitchSpec = {
 };
 type StackTextBlockSpec = {
     mode: "input-text" | "input-password" | "textarea";
+    spellcheck?: boolean;
 };
 type ButtonSpec = {
     id: string;
@@ -215,7 +217,7 @@ class StackLineBuilder {
     }
 
     textBlock(id: string, spec: StackTextBlockSpec) {
-        const control = controlTextBlock(id, {mode: spec.mode});
+        const control = controlTextBlock(id, {mode: spec.mode, spellcheck: spec.spellcheck});
         this.lines.push({left: control});
         return this;
     }
@@ -295,12 +297,14 @@ class SettingGroupBuilder<TId extends string> {
 
     text(id: string, spec: TextSpec) {
         return this.registerFullItem(id, spec, controlString(id, {
+            spellcheck: spec.spellcheck,
             readConfig: spec.readConfig as (() => string) | undefined,
         }));
     }
 
     textBlock(id: string, spec: TextBlockSpec) {
         return this.registerFullItem(id, spec, controlTextBlock(id, {
+            spellcheck: spec.spellcheck,
             mode: spec.mode,
             readConfig: spec.readConfig as (() => string) | undefined,
         }));
@@ -508,10 +512,9 @@ export class SettingBuilder {
         let tabSearchIndex: readonly string[] | undefined;
         return {
             ...shell,
-            // panel 型 Tab 不支持 rebuild（无注册项可清），忽略该参数以对齐 SettingTab.mount 签名
-            mount: async (root, {keywords} = {}, app, _rebuild) => {
-                void _rebuild;
-                await mount(root, keywords, app);
+            // 面板自行处理配置刷新，保留搜索、展开等交互状态。
+            mount: async (root, {keywords} = {}, app, rebuild) => {
+                await mount(root, keywords, app, rebuild);
             },
             scanSearch: (keywords) => {
                 if (tabSearchTitle === undefined) {

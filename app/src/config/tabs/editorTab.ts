@@ -90,22 +90,18 @@ const registerEditorBehaviorGroup = (tab: SettingTabBuilder) => {
     ].filter((item) => getHostCapabilities().localFileSystem || !["app", "folder"].includes(item.value));
     const assetOpenControls = [
         {
-            key: "click",
             label: window.siyuan.languages.assetOpenClick,
             control: controlSelect("editor.assetOpen.click", {options: assetOpenOptions}),
         },
         {
-            key: "ctrlClick",
             label: window.siyuan.languages.assetOpenCtrlClick,
             control: controlSelect("editor.assetOpen.ctrlClick", {options: assetOpenOptions}),
         },
         {
-            key: "altClick",
             label: window.siyuan.languages.assetOpenAltClick,
             control: controlSelect("editor.assetOpen.altClick", {options: assetOpenOptions}),
         },
         {
-            key: "shiftClick",
             label: window.siyuan.languages.assetOpenShiftClick,
             control: controlSelect("editor.assetOpen.shiftClick", {options: assetOpenOptions}),
         },
@@ -128,7 +124,6 @@ const registerEditorBehaviorGroup = (tab: SettingTabBuilder) => {
         ] as StackLine[]),
         controls: assetOpenControls.map((item) => ({
             control: item.control,
-            save: (value) => editorConfigApi.patch(`assetOpen.${item.key}`, value),
         })),
     });
     /// #endif
@@ -194,6 +189,14 @@ const bindDatabaseAttrSettingsVisibility = (root: HTMLElement) => {
 
 const registerEditorBlockFeaturesGroup = (tab: SettingTabBuilder) => {
     const group = tab.group("blockFeatures", window.siyuan.languages.configGroupBlockFeatures);
+    group.switch("editor.displayImgName", {
+        title: window.siyuan.languages.displayImgName,
+        desc: window.siyuan.languages.displayImgNameTip,
+    });
+    group.switch("editor.displayImgAlt", {
+        title: window.siyuan.languages.displayImgAlt,
+        desc: window.siyuan.languages.displayImgAltTip,
+    });
     group.switch("editor.displayNetImgMark", {
         title: window.siyuan.languages.md7,
         desc: window.siyuan.languages.md8,
@@ -394,10 +397,12 @@ const registerEditorMarkdownInlineGroup = (tab: SettingTabBuilder) => {
 const registerEditorAdvancedGroup = (tab: SettingTabBuilder) => {
     const group = tab.group("advanced", window.siyuan.languages.configGroupAdvanced);
     group.text("editor.plantUMLServePath", {
+        spellcheck: false,
         title: window.siyuan.languages.md39,
         desc: window.siyuan.languages.md40,
     });
     group.textBlock("editor.katexMacros", {
+        spellcheck: false,
         title: window.siyuan.languages.katexMacros,
         desc: window.siyuan.languages.katexMacrosTip,
         mode: "textarea",

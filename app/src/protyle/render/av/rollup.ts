@@ -115,7 +115,7 @@ const genSearchList = (element: Element, keyword: string, avId: string, isRelati
         keyword
     }, (response) => {
         let html = "";
-        response.data.keys.forEach((item: IAVColumn, index: number) => {
+        response.data.keys.forEach((item, index) => {
             html += `<div class="b3-list-item b3-list-item--narrow${index === 0 ? " b3-list-item--focus" : ""}" data-col-id="${item.id}" ${isRelation ? `data-target-av-id="${item.relation.avID}"` : `data-col-type="${item.type}"`}>
         ${item.icon ? unicode2Emoji(item.icon, "b3-list-item__graphic", true) : `<svg class="b3-list-item__graphic"><use xlink:href="#${getColIconByType(item.type)}"></use></svg>`}
         <span class="b3-list-item__text">${escapeHtml(item.name || window.siyuan.languages.title)}</span>
@@ -141,7 +141,7 @@ export const goSearchRollupCol = (options: {
         iconHTML: "",
         type: "empty",
         label: `<div class="fn__flex-column b3-menu__filter">
-    <input class="b3-text-field fn__flex-shrink" placeholder="${window.siyuan.languages[options.isRelation ? "searchRelation" : "searchRollupProperty"]}"/>
+    <input spellcheck="false" class="b3-text-field fn__flex-shrink" placeholder="${window.siyuan.languages[options.isRelation ? "searchRelation" : "searchRollupProperty"]}"/>
     <div class="fn__hr"></div>
     <div class="b3-list fn__flex-1 b3-list--background">
         <img style="margin: 0 auto;display: block;width: 64px;height: 64px" src="/stage/loading-pure.svg">
@@ -248,7 +248,7 @@ export const bindRollupData = (options: {
         }
         if (oldValue.keyID && targetKeyAVId) {
             fetchPost("/api/av/getAttributeView", {id: targetKeyAVId}, (response) => {
-                response.data.av.keyValues.find((item: { key: { id: string, name: string, type: TAVCol } }) => {
+                response.data.av.keyValues.find((item) => {
                     if (item.key.id === oldValue.keyID) {
                         goSearchRollupTargetElement.querySelector(".b3-menu__accelerator").textContent = item.key.name;
                         const goSearchRollupCalcElement = options.menuElement.querySelector('[data-type="goSearchRollupCalc"]') as HTMLElement;

@@ -1,4 +1,7 @@
+import {isTableLikeView} from "./viewType";
+import {isAVRenderData} from "./renderData";
 import {Menu} from "../../../plugin/Menu";
+import {MenuItem} from "../../../menus/Menu";
 import {transaction} from "../../wysiwyg/transaction";
 import {fetchPost, fetchSyncPost} from "../../../util/fetch";
 import {getDefaultOperatorByType, getEditableFilters, hasFilterForColumn} from "./filter";
@@ -21,7 +24,7 @@ import {getFieldsByData} from "./view";
 import {hasClosestByClassName} from "../../util/hasClosest";
 import {openFieldVisibility} from "./fieldVisibility";
 import {createEmptyAVValue, genAVAttributeRowHTML} from "./attributeValue";
-import {getAVColumnTextMeasurer, getAVDistributedColumnWidth, getAVTableFitWidths} from "./columnWidth";
+import {getAVColumnIconWidth, getAVColumnTextMeasurer, getAVDistributedColumnWidth, getAVTableFitWidths} from "./columnWidth";
 import {getAVData} from "./virtualScroll";
 import {getAVColorStyle, getNextAVOptionColor} from "./color";
 /// #if MOBILE
@@ -29,7 +32,7 @@ import {activeBlur} from "../../../mobile/util/keyboardToolbar";
 /// #endif
 
 export const getColId = (element: Element, viewType: TAVView) => {
-    if (viewType === "table" || hasClosestByClassName(element, "custom-attr")) {
+    if (isTableLikeView(viewType) || hasClosestByClassName(element, "custom-attr")) {
         return element.getAttribute("data-col-id");
     } else if (["gallery", "kanban"].includes(viewType)) {
         return element.getAttribute("data-field-id");
@@ -87,6 +90,19 @@ export const duplicateCol = (options: {
     options.blockElement.setAttribute("updated", newUpdated);
 };
 
+const getColOptionHTML = (item: IAVColumn["options"][number]) => {
+    const ariaLabel = item.desc ? `${escapeAriaLabel(item.name)}<div class='ft__on-surface'>${escapeAriaLabel(item.desc)}</div>` : "";
+    return `<button class="b3-menu__item" data-option-row="true" data-name="${escapeAttr(item.name)}" data-desc="${escapeAttr(item.desc || "")}" data-color="${escapeAttr(item.color)}">
+    <span draggable="true" class="b3-menu__icon b3-menu__icon--custom fn__grab"><svg><use xlink:href="#iconDrag"></use></svg></span>
+    <div class="fn__flex-1 ariaLabel" data-position="parentW" aria-label="${ariaLabel}">
+        <span class="b3-chip" style="${getAVColorStyle(item)}">
+            <span class="fn__ellipsis">${escapeHtml(item.name)}</span>
+        </span>
+    </div>
+    <svg class="b3-menu__action" data-type="setColOption"><use xlink:href="#iconEdit"></use></svg>
+</button>`;
+};
+
 export const getEditHTML = (options: {
     protyle: IProtyle,
     colId: string,
@@ -140,16 +156,7 @@ export const getEditHTML = (options: {
             colData.options = [];
         }
         colData.options.forEach(item => {
-            const airaLabel = item.desc ? `${escapeAriaLabel(item.name)}<div class='ft__on-surface'>${escapeAriaLabel(item.desc || "")}</div>` : "";
-            html += `<button class="b3-menu__item${html ? "" : " b3-menu__item--current"}" draggable="true" data-name="${escapeAttr(item.name)}" data-desc="${escapeAttr(item.desc || "")}" data-color="${escapeAttr(item.color)}">
-    <svg class="b3-menu__icon fn__grab"><use xlink:href="#iconDrag"></use></svg>
-    <div class="fn__flex-1 ariaLabel" data-position="parentW" aria-label="${airaLabel}">
-        <span class="b3-chip" style="${getAVColorStyle(item)}">
-            <span class="fn__ellipsis">${escapeHtml(item.name)}</span>
-        </span>
-    </div>
-    <svg class="b3-menu__action" data-type="setColOption"><use xlink:href="#iconEdit"></use></svg>
-</button>`;
+            html += getColOptionHTML(item);
         });
     } else if (colData.type === "number") {
         html += `<button class="b3-menu__separator" data-id="separator_2"></button>
@@ -241,6 +248,9 @@ export const getEditHTML = (options: {
     <svg class="b3-menu__action ariaLabel" data-position="4west" aria-label="${window.siyuan.languages.fieldVisibility}" data-type="fieldVisibility"><use xlink:href="#iconEdit"></use></svg>
 </button>`;
     }
+    if (options.isCustomAttr) {
+        html += '<button class="b3-menu__item" data-type="attributePanelVisibility"></button>';
+    }
     if (colData.type !== "block") {
         html += `<button class="b3-menu__item${colData.type === "relation" ? " fn__none" : ""}" data-type="duplicateCol">
     <svg class="b3-menu__icon" style=""><use xlink:href="#iconCopy"></use></svg>
@@ -291,6 +301,70 @@ export const bindEditEvent = (options: {
     const avID = options.data.id;
     const colId = options.menuElement.querySelector(".b3-menu__item").getAttribute("data-col-id");
     const colData = getFieldsByData(options.data).find((item: IAVColumn) => item.id === colId);
+    const visibilityElement = options.menuElement.querySelector('[data-type="attributePanelVisibility"]');
+    if (visibilityElement) {
+        const choices: Array<[IAVColumn["attributePanelVisibility"], string]> = [
+            ["", window.siyuan.languages.default], ["always", window.siyuan.languages.alwaysShow],
+            ["hide-empty", window.siyuan.languages.hideWhenEmpty], ["hide", window.siyuan.languages.alwaysHide],
+        ];
+        const items: IMenu[] = choices.map(([visibility, label]) => ({
+            label, iconHTML: "", checked: (colData.attributePanelVisibility || "") === visibility,
+            click: () => {
+                const previous = colData.attributePanelVisibility || "";
+                if (visibility !== previous) {
+                    transaction(options.protyle, [{
+                        action: "setAttrViewColAttributePanelVisibility", id: colId, avID, data: visibility,
+                    }], [{
+                        action: "setAttrViewColAttributePanelVisibility", id: colId, avID, data: previous,
+                    }]);
+                    colData.attributePanelVisibility = visibility;
+                }
+                options.menuElement.closest(".av__panel")?.remove();
+            },
+        }));
+        const item = new MenuItem({icon: "iconEye", label: window.siyuan.languages.attributePanelVisibility, submenu: items});
+        visibilityElement.replaceWith(item.element);
+        item.element.dataset.type = "attributePanelVisibility";
+        const submenu = item.element.querySelector<HTMLElement>(".b3-menu__submenu");
+        const showSubmenu = () => {
+            item.element.classList.add("b3-menu__item--show");
+            window.siyuan.menus.menu.showSubMenu(submenu);
+        };
+        if (!isMobile()) {
+            item.element.addEventListener("mouseenter", showSubmenu);
+            item.element.addEventListener("keydown", event => {
+                if (event.key === "ArrowRight") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    showSubmenu();
+                    submenu.querySelector<HTMLButtonElement>(".b3-menu__item").focus();
+                } else if (event.key === "ArrowLeft" || event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    item.element.classList.remove("b3-menu__item--show");
+                    item.element.focus();
+                }
+            });
+            options.menuElement.addEventListener("mouseover", event => {
+                const hoveredItem = (event.target as Element).closest(".b3-menu__item");
+                if (hoveredItem && !item.element.contains(hoveredItem)) {
+                    item.element.classList.remove("b3-menu__item--show");
+                }
+            });
+        }
+        item.element.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (isMobile()) {
+                const menu = new Menu(undefined, undefined, true);
+                items.forEach(choice => menu.addItem(choice));
+                const rect = item.element.getBoundingClientRect();
+                menu.open({x: rect.left, y: rect.bottom, h: rect.height});
+            } else {
+                showSubmenu();
+            }
+        });
+    }
     const nameElement = options.menuElement.querySelector('[data-type="name"]') as HTMLInputElement;
     nameElement.addEventListener("blur", () => {
         const newValue = nameElement.value;
@@ -500,6 +574,7 @@ export const bindEditEvent = (options: {
                 options.menuElement.parentElement.remove();
             }
             if (event.key === "Enter") {
+                event.preventDefault();
                 let hasSelected = false;
                 colData.options.find((item) => {
                     if (addOptionElement.value === item.name) {
@@ -525,20 +600,12 @@ export const bindEditEvent = (options: {
                     avID,
                     data: addOptionElement.value
                 }]);
-                options.menuElement.innerHTML = getEditHTML({
-                    protyle: options.protyle,
-                    colId,
-                    data: options.data,
-                    isCustomAttr: options.isCustomAttr
-                });
-                bindEditEvent({
-                    protyle: options.protyle,
-                    menuElement: options.menuElement,
-                    data: options.data,
-                    isCustomAttr: options.isCustomAttr,
-                    blockID: options.blockID
-                });
-                (options.menuElement.querySelector('[data-type="addOption"]') as HTMLInputElement).focus();
+                // 保留输入框及其焦点，避免移动端软键盘因菜单重建而收起和弹出。
+                const optionElements = options.menuElement.querySelectorAll('[data-option-row="true"]');
+                const lastOptionElement = optionElements.length > 0 ?
+                    optionElements[optionElements.length - 1] : addOptionElement.parentElement;
+                lastOptionElement.insertAdjacentHTML("afterend", getColOptionHTML(colData.options[colData.options.length - 1]));
+                addOptionElement.value = "";
                 // 添加选项后面板增高，需按首次锚点重新定位（sticky 锁底部，顶部上移避免溢出视口）
                 const prevTop = parseFloat(options.menuElement.dataset.positionTop);
                 if (!isNaN(prevTop)) {
@@ -798,16 +865,16 @@ export const setFreezeColumn = (protyle: IProtyle, blockElement: Element, freeze
     if (freezeColId === oldFreezeColId) {
         return;
     }
-    const operation = {
-        action: "setAttrViewColPin" as TOperation,
+    const operation: Extract<IOperation, {action: "setAttrViewColPin"}> = {
+        action: "setAttrViewColPin",
         id: freezeColId || oldFreezeColId,
         avID: blockElement.getAttribute("data-av-id"),
         data: !!freezeColId,
         blockID: blockElement.getAttribute("data-node-id"),
         viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW),
     };
-    const undoOperation = {
-        action: "setAttrViewColPin" as TOperation,
+    const undoOperation: Extract<IOperation, {action: "setAttrViewColPin"}> = {
+        action: "setAttrViewColPin",
         id: oldFreezeColId || freezeColId,
         avID: operation.avID,
         data: !!oldFreezeColId,
@@ -833,8 +900,8 @@ const setAVColumnWidths = (protyle: IProtyle, blockElement: HTMLElement, widths:
     if (Object.keys(newWidths).length === 0) {
         return;
     }
-    const operation = {
-        action: "setAttrViewColsWidth" as TOperation,
+    const operation: Extract<IOperation, {action: "setAttrViewColsWidth"}> = {
+        action: "setAttrViewColsWidth",
         avID: blockElement.dataset.avId,
         blockID: blockElement.dataset.nodeId,
         viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW),
@@ -858,6 +925,7 @@ export const autoFitAVColumns = (protyle: IProtyle, blockElement: HTMLElement, c
         getCellValueText,
         getAVColumnTextMeasurer(blockElement),
         columnIDs,
+        getAVColumnIconWidth(blockElement),
     ));
 };
 
@@ -1373,6 +1441,9 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
                         id: avID,
                         blockID,
                     }, (response) => {
+                        if (!isAVRenderData(response.data)) {
+                            return;
+                        }
                         duplicateCol({
                             blockElement,
                             viewID,
@@ -1391,11 +1462,17 @@ export const showColMenu = (protyle: IProtyle, blockElement: Element, cellElemen
             async click() {
                 if (type === "relation") {
                     const response = await fetchSyncPost("/api/av/getAttributeView", {id: avID});
+                    if (response.code !== 0) {
+                        return;
+                    }
                     const colData = response.data.av.keyValues.find((item: {
                         key: { id: string }
                     }) => item.key.id === colId);
                     if (colData.key.relation?.isTwoWay) {
                         const relResponse = await fetchSyncPost("/api/av/getAttributeView", {id: colData.key.relation.avID});
+                        if (relResponse.code !== 0) {
+                            return;
+                        }
                         const dialog = new Dialog({
                             title: window.siyuan.languages.removeColConfirm,
                             content: `<div class="b3-dialog__content">
@@ -1504,6 +1581,7 @@ const removeColByMenu = (options: {
         action: "removeAttrViewCol",
         id: options.colId,
         avID: options.avID,
+        blockID: options.blockID,
         removeDest: options.removeDest
     }, {
         action: "doUpdateUpdated",
@@ -1513,6 +1591,7 @@ const removeColByMenu = (options: {
         action: "addAttrViewCol",
         name: options.oldValue,
         avID: options.avID,
+        blockID: options.blockID,
         type: options.type,
         format: options.cellElement.dataset.dateFormat || "",
         id: options.colId,
@@ -1552,6 +1631,7 @@ export const removeCol = (options: {
         action: "removeAttrViewCol",
         id: colId,
         avID: options.avID,
+        blockID: options.blockID,
         removeDest: options.isTwoWay
     }, {
         action: "doUpdateUpdated",
@@ -1561,6 +1641,7 @@ export const removeCol = (options: {
         action: "addAttrViewCol",
         name: colData.name,
         avID: options.avID,
+        blockID: options.blockID,
         type: colData.type,
         format: colData.dateFormat || "",
         id: colId,
@@ -1600,7 +1681,7 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
     /// #endif
     const menu = new Menu(Constants.MENU_AV_HEADER_ADD);
     const avID = blockElement.getAttribute("data-av-id");
-    if (typeof previousID === "undefined" && blockElement.getAttribute("data-av-type") === "table") {
+    if (typeof previousID === "undefined" && isTableLikeView(blockElement.getAttribute("data-av-type"))) {
         previousID = Array.from(blockElement.querySelectorAll(".av__row--header .av__cell")).pop().getAttribute("data-col-id");
     }
     const blockId = blockElement.getAttribute("data-node-id");
@@ -1613,6 +1694,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.text,
                 avID,
                 type: "text",
@@ -1651,6 +1734,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.number,
                 avID,
                 type: "number",
@@ -1689,6 +1774,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.select,
                 avID,
                 type: "select",
@@ -1727,6 +1814,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.multiSelect,
                 avID,
                 type: "mSelect",
@@ -1765,6 +1854,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.date,
                 avID,
                 type: "date",
@@ -1804,6 +1895,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.assets,
                 avID,
                 type: "mAsset",
@@ -1842,6 +1935,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.checkbox,
                 avID,
                 type: "checkbox",
@@ -1880,6 +1975,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.link,
                 avID,
                 type: "url",
@@ -1918,6 +2015,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.email,
                 avID,
                 type: "email",
@@ -1956,6 +2055,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.phone,
                 avID,
                 type: "phone",
@@ -1994,6 +2095,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.template,
                 avID,
                 type: "template",
@@ -2032,6 +2135,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.relation,
                 avID,
                 type: "relation",
@@ -2070,6 +2175,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.rollup,
                 avID,
                 type: "rollup",
@@ -2109,6 +2216,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.lineNumber,
                 avID,
                 type: "lineNumber",
@@ -2147,6 +2256,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.createdTime,
                 avID,
                 type: "created",
@@ -2186,6 +2297,8 @@ export const addCol = (protyle: IProtyle, blockElement: Element, previousID?: st
             const newUpdated = dayjs().format("YYYYMMDDHHmmss");
             transaction(protyle, [{
                 action: "addAttrViewCol",
+                blockID: blockId,
+                viewID: blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
                 name: window.siyuan.languages.updatedTime,
                 avID,
                 type: "updated",

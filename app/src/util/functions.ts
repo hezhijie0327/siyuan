@@ -1,4 +1,5 @@
 import {getHostCapabilities} from "./hostCapabilities";
+import {getPdfAnnotationReference} from "../editor/pdfAssetLink";
 
 const CONTAINER_BACKEND_SET = new Set(["docker", "ios", "android", "harmony"]);
 
@@ -28,6 +29,12 @@ export const getFrontend = () => {
         return "browser-mobile";
     }
     /// #else
+    /// #if !BROWSER
+    // 设置窗口首屏的浏览器标识可能尚未更新，使用桌面主窗口的集市包兼容性。
+    if (document.body.classList.contains("body--settings")) {
+        return "desktop";
+    }
+    /// #endif
     if (window.navigator.userAgent.startsWith("SiYuan/")) {
         if (isWindow()) {
             return "desktop-window";
@@ -79,7 +86,7 @@ export const isDynamicRef = (text: string) => {
 };
 
 export const isFileAnnotation = (text: string) => {
-    return /^<<assets\/.+\/\d{14}-\w{7} ".+">>$/.test(text);
+    return typeof getPdfAnnotationReference(text) !== "undefined";
 };
 
 export const isValidCustomAttrName = (name: string) => {

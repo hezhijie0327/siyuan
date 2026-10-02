@@ -73,6 +73,7 @@ type AppConf struct {
 	Search         *conf.Search         `json:"search"`         // 搜索配置
 	Flashcard      *conf.Flashcard      `json:"flashcard"`      // 闪卡配置
 	AI             *conf.AI             `json:"ai"`             // 人工智能配置
+	OCR            *conf.OCR            `json:"ocr"`            // 本地图片文字识别
 	Secrets        *conf.Secrets        `json:"secrets"`        // 全局密钥库
 	Variables      *conf.Variables      `json:"variables"`      // 全局变量库
 	Bazaar         *conf.Bazaar         `json:"bazaar"`         // 集市配置
@@ -240,7 +241,12 @@ func InitConf() {
 	initLang()
 
 	Conf = NewAppConf()
+	// 先回滚未提交的目录移动，即使配置文件丢失也必须在挂载和同步之前恢复。
+	if err := recoverNotebookArchiveOperations(); err != nil {
+		logging.LogErrorf("recover notebook archive operations failed: %s", err)
+	}
 	clearEncryptedExportTempOnBoot()
+	clearOldInstallPackages("")
 	confPath := filepath.Join(util.ConfDir, "conf.json")
 	confFileExists := gulu.File.IsExist(confPath)
 	entryVisibilityConfigured := false
@@ -375,8 +381,8 @@ func InitConf() {
 		// v3.7.0 移除了 ant/material 图标包，如果用户之前选择了这两个其中之一，升级后改为 litheness 图标包，避免图标显示异常 https://github.com/siyuan-note/siyuan/issues/7976
 		Conf.Appearance.Icon = "litheness"
 	}
-	os.RemoveAll(filepath.Join(util.IconsPath, "ant"))
-	os.RemoveAll(filepath.Join(util.IconsPath, "material"))
+	os.RemoveAll(filepath.Join(util.AppearancePath, "icons", "ant"))
+	os.RemoveAll(filepath.Join(util.AppearancePath, "icons", "material"))
 	if nil == Conf.UILayout {
 		Conf.UILayout = &conf.UILayout{}
 	}
@@ -703,6 +709,15 @@ func InitConf() {
 	if nil == Conf.Search {
 		Conf.Search = conf.NewSearch()
 	}
+	if nil == Conf.Search.CustomBlock {
+		Conf.Search.CustomBlock = new(true)
+	}
+	if nil == Conf.Search.Mindmap {
+		Conf.Search.Mindmap = new(true)
+	}
+	if nil == Conf.Search.MindmapItem {
+		Conf.Search.MindmapItem = new(false)
+	}
 	if 1 > Conf.Search.Limit {
 		Conf.Search.Limit = 64
 	}
@@ -767,6 +782,9 @@ func InitConf() {
 		}()
 	}
 
+	if nil == Conf.OCR {
+		Conf.OCR = conf.NewOCR(util.IsMobileContainer())
+	}
 	if nil == Conf.AI {
 		Conf.AI = conf.NewAI()
 	} else {
@@ -887,6 +905,7 @@ func InitConf() {
 
 	go util.InitPandoc(Conf.Export.PandocBin)
 	go util.InitTesseract()
+	InitOCR()
 }
 
 func normalizeFileTreeDefaultIcon(fileTree *conf.FileTree, confFileExists bool) *conf.FileTree {
@@ -1054,6 +1073,9 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int, i
 	sql.FlushQueue()
 
 	util.IsExiting.Store(true)
+	// 等待正在执行的路径批次退出，未完成任务保留在配置目录供下次启动恢复。
+	hpathRefresh.Lock()
+	hpathRefresh.Unlock()
 	newVerInstallPkgPath := getNewVerInstallPkgPath()
 	if !skipNewVerInstallPkg() && "" != newVerInstallPkgPath {
 		if 2 == execInstallPkg || (force && 0 == execInstallPkg) { // 将新版本安装包交给桌面宿主执行
@@ -1080,7 +1102,7 @@ func Close(force, setCurrentWorkspace bool, execInstallPkg int) (exitCode int, i
 	sql.CloseDatabase()
 	closePushQueue()
 	util.SaveAssetsTexts()
-	clearWorkspaceTemp("" != installPkgPath)
+	clearWorkspaceTemp(installPkgPath)
 	clearCorruptedNotebooks()
 	clearPortJSON()
 
@@ -1334,6 +1356,7 @@ func InitBoxes() {
 		}
 	}
 
+	recoverDocHPaths()
 	logging.LogInfof("tree/block count [%d/%d]", treenode.CountTrees(), blockCount)
 }
 
@@ -1489,7 +1512,7 @@ func clearCorruptedNotebooks() {
 	}
 }
 
-func clearWorkspaceTemp(preserveInstallPkgs bool) {
+func clearWorkspaceTemp(preserveInstallPkgPath string) {
 	heif.ClearMemoryCache("")
 	os.RemoveAll(filepath.Join(util.TempDir, "assets-cache"))
 	os.RemoveAll(filepath.Join(util.TempDir, "bazaar"))
@@ -1503,25 +1526,7 @@ func clearWorkspaceTemp(preserveInstallPkgs bool) {
 	os.RemoveAll(filepath.Join(util.TempDir, "base64"))
 	os.RemoveAll(filepath.Join(util.TempDir, "ai"))
 
-	// 退出时自动删除超过 7 天的安装包 https://github.com/siyuan-note/siyuan/issues/6128
-	install := filepath.Join(util.TempDir, "install")
-	if !preserveInstallPkgs && gulu.File.IsDir(install) {
-		monthAgo := time.Now().Add(-time.Hour * 24 * 7)
-		entries, err := os.ReadDir(install)
-		if err != nil {
-			logging.LogErrorf("read dir [%s] failed: %s", install, err)
-		} else {
-			for _, entry := range entries {
-				info, _ := entry.Info()
-				if nil != info && !info.IsDir() && info.ModTime().Before(monthAgo) {
-					installPkgPath := filepath.Join(install, entry.Name())
-					if err = os.RemoveAll(installPkgPath); err != nil {
-						logging.LogErrorf("remove old install pkg [%s] failed: %s", installPkgPath, err)
-					}
-				}
-			}
-		}
-	}
+	clearOldInstallPackages(preserveInstallPkgPath)
 
 	tmps, err := filepath.Glob(filepath.Join(util.TempDir, "*.tmp"))
 	if err != nil {

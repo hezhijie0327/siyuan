@@ -1,6 +1,7 @@
 import * as assert from "node:assert/strict";
 import {describe, it} from "node:test";
 import {genNumberInputHtml, genStackHtml} from "./render";
+import {controlTextBlock} from "../setting/control";
 
 describe("genNumberInputHtml", () => {
     it("keeps the unit next to the input inside the number wrapper", () => {
@@ -19,6 +20,64 @@ describe("genNumberInputHtml", () => {
 });
 
 describe("genStackHtml", () => {
+    it("disables spell checking for technical fields while preserving the editor preference for prose", () => {
+        assert.equal(typeof Lute, "undefined");
+        const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+        try {
+            for (const enabled of [true, false]) {
+                Object.defineProperty(globalThis, "window", {
+                    configurable: true,
+                    value: {siyuan: {config: {editor: {spellcheck: enabled}}}},
+                });
+                for (const mode of ["input-text", "textarea", "input-password"] as const) {
+                    const technical = controlTextBlock("technical", {
+                        mode, spellcheck: false, readConfig: () => "sort.json",
+                    });
+                    const prose = controlTextBlock("prose", {
+                        mode, readConfig: () => "Some text",
+                    });
+                    assert.match(genStackHtml([{left: technical}]), /spellcheck="false"/);
+                    const expected = mode === "input-password" ? false : enabled;
+                    assert.ok(genStackHtml([{left: prose}]).includes(`spellcheck="${expected}"`));
+                }
+            }
+        } finally {
+            if (originalWindow) {
+                Object.defineProperty(globalThis, "window", originalWindow);
+            } else {
+                Reflect.deleteProperty(globalThis, "window");
+            }
+        }
+    });
+
+    it("escapes textarea closing tags and literal character references", () => {
+        assert.equal(typeof Lute, "undefined");
+        const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+        Object.defineProperty(globalThis, "window", {
+            configurable: true,
+            value: {siyuan: {config: {editor: {spellcheck: false}}}},
+        });
+        try {
+            const html = genStackHtml([{
+                left: {
+                    kind: "textBlock", id: "macros", mode: "textarea",
+                    readConfig: () => "</textarea><img src=x>\n&amp; &#60; &lt;",
+                    readValue: (el) => (el as HTMLTextAreaElement).value,
+                },
+            }]);
+
+            assert.match(html, />&lt;\/textarea&gt;&lt;img src=x&gt;\n&amp;amp; &amp;#60; &amp;lt;<\/textarea>/);
+            assert.equal((html.match(/<\/textarea>/g) || []).length, 1);
+            assert.doesNotMatch(html, /<img/);
+        } finally {
+            if (originalWindow) {
+                Object.defineProperty(globalThis, "window", originalWindow);
+            } else {
+                Reflect.deleteProperty(globalThis, "window");
+            }
+        }
+    });
+
     it("renders descriptions with controls using the primary text color", () => {
         const html = genStackHtml([{
             left: {kind: "desc", text: "Setting name"},

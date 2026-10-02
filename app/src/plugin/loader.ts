@@ -104,6 +104,7 @@ const getLifecycleManager = (app: App) => {
         shouldReloadOnDataChange: (plugin) => plugin.onDataChanged === Plugin.prototype.onDataChanged,
         onDataChanged: (plugin, reason) => plugin.onDataChanged(reason),
         onunload: (plugin) => {
+            plugin.setting?.close();
             deactivateCustomBlockPlugin(plugin.name);
             beginPluginTeardown(plugin);
             return plugin.onunload();
@@ -123,7 +124,7 @@ const getLifecycleManager = (app: App) => {
 const createPluginDataLoader = () => {
     let promise: Promise<IPluginData[]>;
     return (name: string) => {
-        promise ??= fetchSyncPost("/api/petal/loadPetals", {frontend: getFrontend()}).then(response => response.data);
+        promise ??= fetchSyncPost("/api/petal/loadPetals", {frontend: getFrontend()}).then(response => response.code === 0 && Array.isArray(response.data) ? response.data : []);
         return promise.then(items => items.find(item => item.name === name));
     };
 };
@@ -141,7 +142,7 @@ export const loadPlugins = async (app: App, names?: string[], init = true) => {
     } else {
         const batch = manager.beginLoadBatch(!manager.isStarted());
         const response = await fetchSyncPost("/api/petal/loadPetals", {frontend: getFrontend()});
-        tasks = (response.data as IPluginData[]).map(item => manager.requestBatchLoad(item.name, item, batch));
+        tasks = (response.code === 0 && Array.isArray(response.data) ? response.data : []).map(item => manager.requestBatchLoad(item.name, item, batch));
         shouldStart = manager.isLatestLoadBatch(batch);
     }
     if (shouldStart) {
@@ -188,6 +189,21 @@ export const loadPlugin = async (app: App, item: IPluginData) => {
     return manager.getInstance(item.name);
 };
 
+type TPluginDockLayout = Partial<Pick<IPluginDockTab, "position" | "index" | "show" | "size">>;
+
+const mergeDockSize = (...sizes: Partial<Config.IUILayoutDockPanelSize>[]) => {
+    const result: Config.IUILayoutDockPanelSize = {};
+    sizes.forEach(size => {
+        (["width", "height"] as const).forEach(key => {
+            const value = size?.[key];
+            if (value === null || (typeof value === "number" && Number.isFinite(value))) {
+                result[key] = value;
+            }
+        });
+    });
+    return result;
+};
+
 const updateDock = (dockItem: Config.IUILayoutDockTab[], index: number, plugin: Plugin, type: string) => {
     const dockKeys = Object.keys(plugin.docks);
     if (dockKeys.length === 0) {
@@ -204,12 +220,17 @@ const updateDock = (dockItem: Config.IUILayoutDockTab[], index: number, plugin: 
                 plugin.docks[tabItem.type].config.position = index === 0 ? "BottomLeft" : "BottomRight";
             }
             plugin.docks[tabItem.type].config.index = tabIndex;
-            plugin.docks[tabItem.type].config.show = tabItem.show;
-            plugin.docks[tabItem.type].config.size = tabItem.size;
             if (!window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name]) {
                 window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name] = {};
             }
-            window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][tabItem.type] = plugin.docks[tabItem.type].config;
+            const config = plugin.docks[tabItem.type].config;
+            const saved: TPluginDockLayout = window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][tabItem.type];
+            // 结构位置跟随工作区布局；缓存已有的尺寸和打开状态优先，仅用布局快照补齐缺失字段。
+            window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][tabItem.type] = {
+                ...config,
+                show: saved?.show ?? tabItem.show ?? config.show,
+                size: mergeDockSize(config.size, tabItem.size, saved?.size),
+            };
             setStorageVal(Constants.LOCAL_PLUGIN_DOCKS, window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS]);
         }
     });
@@ -300,11 +321,20 @@ export const addPluginDock = (plugin: Plugin) => {
         if (!window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name]) {
             window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name] = {};
         }
-        if (window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name] &&
-            window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][key]) {
-            plugin.docks[key].config = window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][key];
-        }
         const dock = plugin.docks[key];
+        const savedConfig: TPluginDockLayout = window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][key];
+        if (savedConfig) {
+            // 仅恢复用户布局，图标、标题和默认快捷键使用插件本次注册的配置。
+            dock.config = {
+                ...dock.config,
+                position: savedConfig.position ?? dock.config.position,
+                index: savedConfig.index ?? dock.config.index,
+                show: savedConfig.show ?? dock.config.show,
+                size: mergeDockSize(dock.config.size, savedConfig.size),
+            };
+        }
+        window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS][plugin.name][key] = dock.config;
+        setStorageVal(Constants.LOCAL_PLUGIN_DOCKS, window.siyuan.storage[Constants.LOCAL_PLUGIN_DOCKS]);
         const entryId = getPluginDockEntryKey(plugin.name, dock.id);
         const show = dock.config.show && isEntryVisible(`dock.${entryId}`);
         const dockTab: Config.IUILayoutDockTab & {entryId: string} = {

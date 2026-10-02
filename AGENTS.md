@@ -6,6 +6,18 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
 
 ## 1. Non-negotiable constraints
 
+### Requirement evaluation
+
+Before implementing a requirement, evaluate its premise and approach with effort proportional to its complexity and risk
+
+1. **Check the premise and existing capabilities:** Inspect the relevant implementation, settings, shortcuts, APIs, or plugin capabilities, and reproduce reported behavior when feasible. Check applicable repository rules, encrypted notebook compatibility, the `.sy` format, and API contracts. Distinguish the user's goal and acceptance criteria from a suggested implementation; evaluate whether that implementation addresses the underlying problem. State any limits to verification
+2. **Choose an appropriate approach:** Prefer the smallest sufficient change consistent with existing practices and compatibility requirements. Consider whether an existing capability or a documentation correction already satisfies the need, including the option of making no code change
+3. **Briefly report before editing:** State the conclusion, key evidence, and remaining uncertainty in a progress update before the first change. Discuss alternatives only when they involve meaningful tradeoffs; simple tasks need only a short explanation
+4. **Ask only when a decision is needed:** If the premise is false or implementation is unwarranted, explain the evidence and ask how to proceed unless the user's existing instructions already resolve the next step. Ask before changing the agreed goal or scope, or making an unresolved product, priority, or compatibility tradeoff. Do not silently narrow or broaden the task
+5. **Otherwise proceed directly:** When the requirement is reasonable, implement it without another confirmation round. Choosing a different implementation that meets the agreed goal and acceptance criteria does not itself require approval
+
+Unambiguous mechanical edits with no behavioral or compatibility impact need no separate evaluation round. Continue to follow applicable repository checks; a rename, version bump, or documentation update is not automatically exempt
+
 ### Do not hand-edit
 
 - `app/stage/protyle/js/lute/lute.min.js` (built from upstream `88250/lute`)
@@ -20,6 +32,7 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
 2. **Frontend build:** Do NOT run `pnpm build` — the developer runs `pnpm dev` manually, and `pnpm build` will conflict with it, producing broken bundles
 3. **Kernel development:** After modifying Go code, run `gofmt`, but do not compile the kernel binary or restart a running kernel; the developer handles both manually
 4. **Git:** **NEVER** run `git commit` / `git push` unless explicitly asked — no exceptions
+5. **UI verification in a browser:** Open `/stage/build/desktop/` directly instead of `/`. The kernel selects the frontend bundle by User-Agent in `kernel/server/serve.go`, and a UA containing `Electron` is redirected to the Electron-only `/stage/build/app/`, which fails in a plain browser with `require is not defined`; VSCode's built-in browser sends such a UA. The Electron main window does not expose a remote debugging port by default
 
 ### Encrypted notebook compatibility
 
@@ -44,7 +57,8 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
    - Domains: `ld246.com` only in `zh-CN.json`; use `liuyun.io` in all other languages
    - In `zh-TW` localization and the Traditional Chinese user guide, consistently translate the content-model term Block as `區塊`, including compounds (e.g. `子區塊`, `程式碼區塊`, `區塊 ID`); never abbreviate it as `塊`, and count blocks with `個區塊`
    - Translate Block Reference as `區塊引用` and Blockquote as `引述區塊`; preserve non-content-block terms such as `分塊` (data chunks) and `覈取方塊` (Checkbox)
-   - After modifying i18n files, run `python scripts/check-lang-keys.py` to verify key completeness across all language files
+   - Preserve each `_kernel` message's Go format argument positions and verbs from `en.json`; when translation requires a different order, use explicit argument indexes such as `%[4]s` and `%[3]d`. Preserve `%%` for literal percent signs
+   - After modifying i18n files, run `python scripts/check-lang-keys.py` to verify key completeness and kernel format argument compatibility across all language files
 2. **Cross-platform scripting:**
    - Do not assume the current shell is Bash, zsh, or PowerShell. Confirm the shell before using shell-specific syntax; otherwise avoid constructs such as `&&`, heredocs, and `/dev/null`
    - For simple sequences, use separate command calls and set the command working directory instead of chaining `cd` with another command
@@ -54,6 +68,8 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
    - If no existing icon is suitable, source one from the official [Lucide icon library](https://lucide.dev/icons/) and adapt only attributes such as stroke width to match the established icon style; preserve the upstream path data
    - When adding an icon to `app/appearance/icons/litheness/icon.js`, add its preview entry to `app/appearance/icons/index.html` in the same change and keep the order aligned
 4. **User guide:** When editing the user guide, follow `docs/SY-FORMAT.md`
+   - User-guide changes must be synchronized across all four bundled languages: English (`app/guide/20210808180117-6v0mkxr`), Simplified Chinese (`app/guide/20210808180117-czj9bvb`), Traditional Chinese (`app/guide/20211226090932-5lcq56f`), and Japanese (`app/guide/20240530133126-axarxgx`). Do not omit Japanese or discover corresponding pages only by Chinese/English title matching
+   - Before finishing a guide change, enumerate the language directories under `app/guide/` and verify the corresponding section in each language. Translate the content, preserve existing document/block IDs, generate fresh IDs for new blocks, and validate the changed `.sy` JSON. `docs/` developer documentation does not replace the bundled user guide
    - When a feature adds or changes shortcuts, update the shortcut documentation in the user guide in the same change; if the appropriate section is unclear, ask the user where it should be placed
    - List item text must not end with a period or equivalent sentence-ending mark (for example `.`, `。`, or `।`)
    - Represent in-app UI navigation paths as segmented `kbd` text marks: use one `NodeTextMark` with `TextMarkType: "kbd"` per navigation level, and place a plain `NodeText` containing ` - ` between adjacent levels
@@ -63,6 +79,8 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
    - Append the full issue/PR URL to the end of the commit title (e.g. `https://github.com/siyuan-note/siyuan/issues/<NNN>`, not the `#NNN` short form — it is clickable) only when a related issue exists; never put the URL in the commit body, and do not fabricate one
 6. **GitHub:** Prefer the GitHub CLI (`gh`) for all GitHub operations, including reading issues, comments, pull requests, commits, statuses, and metadata. If `gh` is unavailable or does not support the operation, fall back to the GitHub API or web interface
    - When creating an issue, use an English title and a Chinese body whose first paragraph is the corresponding Chinese title; do not use the repository's issue templates or reproduce their form fields, and write a concise, task-specific body directly
+   - When changing the title of an existing issue, keep the replaced title as the first paragraph of the body, separated from the remaining content by a blank line, and keep the rest of the body unchanged
+   - When replying to an issue, omit testing and verification details (such as test commands, cases, and results), but invite the user to test the new version and provide feedback. If the issue body is in Chinese, reply in Chinese; otherwise, reply bilingually in the language of the issue body and Chinese
    - When the selected endpoint supports labels, they may be included in the same create or update payload. Afterward, verify only that the issue or pull request itself succeeded (number, title, and body). Do not check whether labels were applied or send a follow-up request solely to apply them; GitHub silently drops label changes when the actor lacks push access
    - For GitHub write operations containing non-ASCII text on Windows or when shell encoding is uncertain, use this file-based workflow. Do not use this workflow for ASCII-only requests:
      1. Create the request payload as UTF-8 JSON with a file-editing tool, not an inline shell command
@@ -71,6 +89,9 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
      4. Inspect the returned resource and read it back with `gh api` to verify the published text exactly, including line breaks and non-ASCII characters
      5. Delete the temporary JSON file and confirm that it no longer exists
    - For shell-independent read-back verification, query one field per `gh api --jq` call, for example `--jq .title` and `--jq .body`
+   - Prefer capturing `gh` stdout directly in a Node.js or Python script and decoding it as UTF-8. When using PowerShell to save output, explicitly use `Out-File -Encoding utf8`; Windows PowerShell 5.1 defaults to UTF-16LE for `>` and `Out-File`, and its UTF-8 output includes a BOM, so readers must handle that BOM. Explicit file encoding cannot repair text already corrupted by pipeline decoding; use direct process capture in that case
+   - Keep the submitted payload file until read-back comparison passes. Prefer parsing the returned resource as JSON and comparing its fields with the payload; normalize CRLF to LF on both sides if needed, but preserve meaningful leading/trailing whitespace and blank lines. For `--jq` text output, remove only the single output line terminator added by the command, not arbitrary trailing whitespace. Delete temporary payload and read-back files after successful verification and confirm their removal
+   - `gh api` applies `--jq` locally after sending the request, so an invalid or failing expression can cause a non-zero exit even when the write succeeded. Omit `--jq` on write commands and use separate read-back calls to verify individual fields. When a write command exits non-zero, confirm the remote state before deciding whether to retry; the write may already have succeeded, and retrying can create duplicate issues or comments or repeat other side effects
 7. **Issue titles:** Whenever the user asks to generate an issue title, provide it in English regardless of the wording of the request, and do not start it with `Fix`. These rules choose title wording from the issue's nature; they are not an instruction to apply GitHub labels
    - For a bug, objectively describe the problem or symptom instead of writing from a bug-fix perspective
    - For an improvement to existing functionality, write the title from an improvement perspective and prefer `Improve ...`
@@ -84,6 +105,19 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
    - Keep parent and child paths aligned with the actual menu hierarchy. Dock entries support visibility only and must not be included in sorting
    - Cover catalog consistency, separator placement, order migration, and plugin-slot preservation in the related tests. Configured menus must not produce leading, trailing, or consecutive separators
    - The menu `ignore` option controls conditional rendering and must not be used to opt an entry out of visibility or order configuration
+10. **API contracts:**
+    - Follow [docs/API-CONTRACTS.md](docs/API-CONTRACTS.md) when adding or changing kernel HTTP APIs. Define new endpoints in `kernel/apicontract/` and bind their handlers through `contractHandler`; keep contracts synchronized when changing existing endpoints
+    - Treat `docs/API-CONTRACTS.md` and its localized versions as maintenance guides. For routine endpoint or feature changes, do not append endpoint-specific behavior, feature summaries, verification results, or focused test commands. Update these guides only when the contract mechanism, compatibility policy, generation workflow, or test discovery/verification rules change, or when the user explicitly requests a documentation update; keep localized versions aligned
+    - Document endpoint behavior, defaults, constraints, and compatibility in comments on the corresponding contract source declarations. Synchronize plugin-facing explanations in the corresponding maintained declarations in `petal`, following the Petal documentation rule below. Put user-facing feature instructions in the bundled user guide
+    - Do not automatically add newly implemented endpoints to `docs/API.md` or its localized versions (`docs/API.zh-CN.md`, `docs/API.ja.md`); add such documentation only when explicitly requested by the user. Continue maintaining API contracts, generated declarations, and required regression tests. These documentation scope rules take precedence over broader documentation instructions in the maintenance guides
+    - Preserve existing input compatibility, response variants, authorization, and encrypted notebook lease behavior; cover affected behavior with regression tests
+    - Remove migrated or deleted routes from `kernel/apicontract/legacy_routes.json`; never add new routes to this legacy list or bypass contract checks with `any` or type assertions
+    - After contract changes, run `pnpm run api:generate --petal ../../petal` and `pnpm run api:check --petal ../../petal` from `app/`; synchronize related public declarations in `petal` and do not hand-edit generated declarations or schemas
+    - Run `pnpm run lint` from `app/`, `go test ./apicontract/...` from `kernel/`, and the applicable API compatibility and route coverage tests described in the maintenance document. Verify that existing CI selections and documented commands discover new regression cases; automatic discovery or coverage by an existing full-suite command satisfies this requirement without a documentation edit. Update CI selections and documented commands only when they would otherwise miss the new tests. Report task-specific verification commands and results in the task response or PR description
+
+11. **Desktop and mobile parity:**
+    - When changing functionality shared by desktop and mobile, inspect the corresponding mobile implementation under `app/src/mobile/` and update it in the same task. This includes menus, toolbars, dialogs, interactions, and their event handlers; do not assume that desktop changes automatically apply to mobile
+    - Before finishing, verify both implementations and their shared dependencies, preserving platform-appropriate interactions. If no corresponding mobile feature exists or the change is desktop-only, state why mobile changes are not needed in the task response
 
 ---
 
@@ -94,8 +128,23 @@ SiYuan repository guide. Module path `github.com/siyuan-note/siyuan`, license AG
 3. **UI paths:** In all contexts, including code comments, UI text, i18n, user guides, documentation, issue/PR content, and responses, separate navigation levels with a hyphen surrounded by spaces (for example, `设置 - 快捷键 - 通用`); do not use arrow symbols such as `→`
 4. **Markdown:** Do not hand-wrap; keep each line (paragraphs, table rows, list items, etc.) on a single line
 5. **TypeScript/JavaScript:** Semicolons required, use double quotes, indent with spaces
+   - When moving or extracting a symbol into another module, update all affected imports to reference its defining module directly. Do not leave forwarding re-exports in the original module merely to avoid updating callers
 6. **CSS:** Do not use the `:has()` selector because of its performance impact
+   - Before adding or styling a basic control, inspect and reuse the existing component, markup pattern, and shared styles in `app/src/assets/scss/component/` (for example, `b3-button`, `b3-select`, and `b3-text-field`), including existing modifiers; use `block__icon` for established icon-button patterns
+   - Apply the same reuse-first rule to menus, dialogs, tooltips, and drag interactions: inspect existing implementations and APIs before adding a feature-specific replacement
+   - For single-choice enumerations in menus, use submenu items with the current option checked rather than embedding a select control. Show a right-arrow indicator on the parent item, open its submenu on hover on desktop, and support tapping on mobile. Reuse the existing menu implementation and positioning behavior
+   - Feature styles should describe layout (such as placement, width constraints, gaps, and wrapping), rather than duplicate or override basic control appearance (such as height, padding, typography, colors, borders, shadows, and hover/focus/disabled states). Do not use deeper selectors, inline styles, or `!important` merely to restyle a shared control
+   - If existing controls cannot meet a requirement, explain the concrete need and prefer extending a shared component or modifier when the need is reusable. Keep necessary feature-specific exceptions narrowly scoped; use theme variables for appearance and retain keyboard focus and disabled feedback
+   - Reuse components according to their purpose; do not borrow an unrelated component (for example, menu items for a form) and then cancel its styles. Preserve useful feature classes as theme hooks when switching to shared controls
+   - When reviewing control-style changes, check consistency with shared controls, theme overrides through shared classes, light/dark themes, narrow layouts, and large editor fonts. Preserve necessary layout and touch-target constraints; do not remove all feature styles indiscriminately
 7. **CSS positioning and scrolling:** When changing `position`, `transform`, `contain`, or `overflow` on a shared container, check the effects on descendant positioning reference frames, overlay coverage, and clipping. Prefer a dedicated container when a local control needs a positioning reference. For settings dialog changes, verify detail overlays, the top drag area, and scrollbar placement at different window widths
+
+8. **Built-in custom attributes:** Use the `custom-sy-` prefix for custom attributes owned by built-in features
+   - Define custom attribute name constants in `app/src/constants.ts`, alongside similar constants in `Constants`, rather than in individual feature modules
+
+9. **Frontend preference storage:** Do not use browser `localStorage` directly, including `window.localStorage` and `globalThis.localStorage`
+   - Read preferences from `window.siyuan.storage`; when changing a preference, update its in-memory value and persist it with `setStorageVal` from `app/src/protyle/util/compatibility.ts`
+   - SiYuan persists these values in the workspace's `data/storage/local.json`; do not use browser `storage` events to observe changes to this store
 
 ---
 
@@ -184,6 +233,8 @@ All Go libraries above are dependencies in `kernel/go.mod`. GitHub org: `siyuan-
 - **Editing Go dependencies:** To test a local change, add a temporary `replace` in `kernel/go.mod` pointing at your local checkout; **never commit that temporary `replace`**.
 - **Rebuilding `lute.min.js`:** Change `lute`, rebuild with GopherJS, and copy the artifact into `app/stage/protyle/js/lute/`.
 - **Type declarations:** when changing files under `app/src/types/` or other TypeScript declarations and constants exposed to plugins, synchronize the corresponding declarations and constants in the `petal` repository in the same task.
+- **Petal changelog:** Whenever changing files in the `petal` repository, update `petal/CHANGELOG.md` in the same task. Add a concise entry under the current unreleased version before committing the Petal change.
+- **Petal documentation:** Keep `petal/README.md` limited to the project title and the `plugin-sample` link. Do not add feature descriptions, API usage explanations, or code examples to the README. Document API behavior, constraints, and lifecycle in comments on the corresponding API declarations in `petal`; put executable usage examples in the actual source code of `plugin-sample`.
 
 ---
 

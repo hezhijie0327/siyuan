@@ -1,8 +1,9 @@
 import {getEventName, updateHotkeyTip} from "../protyle/util/compatibility";
 import {setPosition} from "../util/setPosition";
+import {isScrollAboveMenu} from "../util/zIndex";
 import {getAnchoredMenuPosition} from "./menuPosition";
-import {updateMenuItemGroupClasses} from "./menuGroup";
-import {waitForSheetViewport} from "./sheetOpen";
+import {updateMenuGroupsOnMutation, updateMenuItemGroupClasses} from "./menuGroup";
+import {getVisibleSheetViewport, waitForSheetViewport} from "./sheetOpen";
 import {hasClosestByClassName} from "../protyle/util/hasClosest";
 import {isMobile} from "../util/functions";
 import {Constants} from "../constants";
@@ -11,6 +12,7 @@ import {electronUndo} from "../protyle/undo";
 import {escapeAttr} from "../util/escape";
 import {setMenuInputCurrent} from "./menuKeyboard";
 import {forEachPluginSubscriber} from "../plugin/EventBusCore";
+import {activeBlur} from "../mobile/util/keyboardToolbar";
 /// #if !MOBILE
 import {applyMenuEntryVisibility} from "../config/entryVisibility/runtime";
 /// #endif
@@ -40,6 +42,8 @@ export class Menu {
     private suppressSheetClick = false;
     private targetPositionFrame: number | undefined;
     private cancelSheetOpen: (() => void) | undefined;
+    private restoreKeyboard: (() => void) | undefined;
+    private preserveSheetKeyboard = false;
 
     private updateTargetPosition = () => {
         if (typeof this.targetPositionFrame === "number") {
@@ -56,6 +60,8 @@ export class Menu {
         this.preventDefault = this.preventDefault.bind(this);
 
         this.element = element || document.getElementById("commonMenu");
+        // 菜单项增删后重新分组，使圆角跟随各组的首尾项；仅监听节点变化，避免分组类更新触发循环。
+        new MutationObserver(updateMenuGroupsOnMutation).observe(this.element, {childList: true, subtree: true});
         this.element.querySelector(".b3-menu__title .b3-menu__label").innerHTML = window.siyuan.languages.back;
         const activateKeymapInput = (event: Event) => {
             const target = event.target as HTMLElement;
@@ -67,11 +73,21 @@ export class Menu {
         this.element.addEventListener("focusin", activateKeymapInput);
         this.element.addEventListener("pointerdown", activateKeymapInput);
         if (isMobile()) {
+            const preserveBlockMenuFocus = (event: MouseEvent) => {
+                const name = this.element.getAttribute("data-name");
+                if ((name === Constants.MENU_BLOCK_SINGLE || name === Constants.MENU_BLOCK_MULTI) &&
+                    !(event.target as Element).closest("input, textarea, select, [contenteditable=\"true\"]")) {
+                    // 保留编辑器选区，同时允许菜单输入框正常获取焦点。
+                    event.preventDefault();
+                }
+            };
+            this.element.addEventListener("mousedown", preserveBlockMenuFocus);
             this.element.addEventListener("touchstart", this.handleSheetTouchStart, {passive: true});
             this.element.addEventListener("touchmove", this.handleSheetTouchMove, {passive: false});
             this.element.addEventListener("touchend", this.handleSheetTouchEnd);
             this.element.addEventListener("touchcancel", this.handleSheetTouchCancel);
             if (this.element.id === "commonMenu") {
+                document.getElementById("commonMenuScrim")?.addEventListener("mousedown", preserveBlockMenuFocus);
                 document.getElementById("commonMenuScrim")?.addEventListener("click", (event) => {
                     event.stopPropagation();
                     this.closeSheet();
@@ -180,7 +196,12 @@ export class Menu {
     }
 
     private canDragSheet(target: HTMLElement) {
-        if (target.closest("input, textarea, select, [contenteditable=\"true\"]")) {
+        // 文件选择框覆盖上传菜单项，允许从该区域开始下拉关闭菜单。
+        if (target.closest("input:not([type=\"file\"]), textarea, select, [contenteditable=\"true\"]")) {
+            return false;
+        }
+        // 可排序条目由触摸拖拽桥接处理，避免排序时同时下拉关闭菜单。
+        if (target.closest('[draggable="true"]')) {
             return false;
         }
         if (target.closest(".b3-menu__title")) {
@@ -288,12 +309,20 @@ export class Menu {
         this.finishSheetTouch();
     };
 
-    private closeSheet() {
+    public closeSheet() {
         this.cancelSheetOpen?.();
         this.cancelSheetOpen = undefined;
         if (!this.element.classList.contains("b3-menu--sheet")) {
             this.element.style.transform = "";
             window.setTimeout(() => this.remove(), Constants.TIMEOUT_DBLCLICK);
+            return;
+        }
+        const restoreKeyboard = this.restoreKeyboard;
+        if (restoreKeyboard) {
+            // 先隐藏菜单，避免软键盘改变视口时将退出中的菜单重新顶入可视区域。
+            this.removeImmediately();
+            // 在关闭手势中恢复焦点，使浏览器端也能响应用户操作弹出软键盘。
+            restoreKeyboard();
             return;
         }
         clearTimeout(fullscreenCloseTimeout);
@@ -302,6 +331,16 @@ export class Menu {
         this.element.style.transform = "translateY(100%)";
         this.hideFullscreenScrim();
         fullscreenCloseTimeout = window.setTimeout(() => this.removeImmediately(), Constants.TIMEOUT_DBLCLICK);
+    }
+
+    // 保留菜单内容和触摸事件，在向菜单外拖拽时临时让出底层区域。
+    public setSheetDragPreview(active: boolean) {
+        if (!this.element.classList.contains("b3-menu--sheet")) {
+            return;
+        }
+        this.element.style.transition = active ? "none" : "";
+        this.element.style.transform = active ? "translateY(100%)" : "translateY(0px)";
+        this.getFullscreenScrim()?.classList.toggle("b3-menu__scrim--open", !active);
     }
 
     private updateSheetTitle() {
@@ -326,8 +365,29 @@ export class Menu {
         this.updateSheetTitle();
         const mobileSize = window.siyuan.mobile.size;
         const orientationSize = mobileSize.isLandscape ? mobileSize.landscape : mobileSize.portrait;
-        // 使用当前方向记录的完整视口高度，避免软键盘收起期间菜单高度被压缩
-        this.element.style.height = Math.max(window.innerHeight, orientationSize?.height1 || 0) * .56 + "px";
+        let maxHeight: number;
+        if (this.preserveSheetKeyboard) {
+            const viewport = getVisibleSheetViewport(window.innerHeight, window.visualViewport);
+            this.element.style.bottom = viewport.bottomOffset + "px";
+            maxHeight = viewport.height * .9;
+        } else {
+            // 使用当前方向记录的完整视口高度，避免软键盘收起期间菜单高度被压缩
+            this.element.style.bottom = "";
+            maxHeight = Math.max(window.innerHeight, orientationSize?.height1 || 0) * .56;
+        }
+        if (this.element.classList.contains("b3-menu--fit")) {
+            // 内容不足时收缩面板，避免列表下方留白；测量时取消弹性拉伸，否则 scrollHeight 会包含被撑大的空白
+            this.element.style.height = "";
+            const itemsElement = this.element.lastElementChild as HTMLElement;
+            const itemsFlex = itemsElement.style.flex;
+            itemsElement.style.flex = "none";
+            const titleHeight = this.element.firstElementChild.getBoundingClientRect().height;
+            const contentHeight = itemsElement.scrollHeight;
+            itemsElement.style.flex = itemsFlex;
+            this.element.style.height = Math.min(maxHeight, Math.max(160, titleHeight + contentHeight)) + "px";
+            return;
+        }
+        this.element.style.height = maxHeight + "px";
     }
 
     public showSubMenu(subMenuElement: HTMLElement) {
@@ -402,11 +462,8 @@ export class Menu {
         itemsMenuElement.style.maxHeight = Math.max(window.innerHeight - menuElement.getBoundingClientRect().top - 18 + 1, 30) + "px";
     }
 
-    private preventDefault(event: KeyboardEvent) {
-        if (!hasClosestByClassName(event.target as Element, "b3-menu") &&
-            !hasClosestByClassName(event.target as Element, "tooltip") &&
-            // 移动端底部键盘菜单
-            !hasClosestByClassName(event.target as Element, "keyboard__bar")) {
+    private preventDefault(event: Event) {
+        if (!isScrollAboveMenu(event.target as Element, this.element)) {
             event.preventDefault();
         }
     }
@@ -419,7 +476,7 @@ export class Menu {
         }
     }
 
-    public removeScrollEvent() {
+    private removeScrollEvent() {
         window.removeEventListener(isMobile() ? "touchmove" : this.wheelEvent, this.preventDefault, false);
     }
 
@@ -434,6 +491,10 @@ export class Menu {
                 if (this.element.classList.contains("b3-menu--sheet")) {
                     this.setSheetHeight();
                 }
+                return;
+            }
+            if (isMobile()) {
+                this.closeSheet();
                 return;
             }
         }
@@ -457,6 +518,9 @@ export class Menu {
     }
 
     private removeImmediately() {
+        // 菜单动作和菜单替换只清理状态，避免跳转或弹窗后抢回编辑焦点。
+        this.restoreKeyboard = undefined;
+        this.preserveSheetKeyboard = false;
         this.cancelSheetOpen?.();
         this.cancelSheetOpen = undefined;
         const menuName = this.element.getAttribute("data-name");
@@ -480,7 +544,7 @@ export class Menu {
         this.element.lastElementChild.classList.remove("b3-menu__items--menu");
         this.element.lastElementChild.removeAttribute("style");  // 输入框 focus 后 boxShadow 显示不全
         this.element.classList.add("fn__none");
-        this.element.classList.remove("b3-menu--list", "b3-menu--fullscreen", "b3-menu--sheet");
+        this.element.classList.remove("b3-menu--list", "b3-menu--fullscreen", "b3-menu--sheet", "b3-menu--fit");
         this.element.removeAttribute("style");  // zIndex
         this.element.removeAttribute("data-name");    // 标识再次点击不消失
         this.element.removeAttribute("data-from");    // 标识菜单入口
@@ -584,6 +648,13 @@ export class Menu {
         window.visualViewport?.addEventListener("scroll", this.updateTargetPosition);
     }
 
+    private startTrackingSheetViewport() {
+        this.stopTrackingTargetPosition();
+        window.addEventListener("resize", this.updateTargetPosition);
+        window.visualViewport?.addEventListener("resize", this.updateTargetPosition);
+        window.visualViewport?.addEventListener("scroll", this.updateTargetPosition);
+    }
+
     private stopTrackingTargetPosition() {
         window.removeEventListener("resize", this.updateTargetPosition);
         window.visualViewport?.removeEventListener("resize", this.updateTargetPosition);
@@ -594,7 +665,8 @@ export class Menu {
         }
     }
 
-    public fullscreen(position: "bottom" | "all" = "all") {
+    public fullscreen(position: "bottom" | "all" = "all", restoreKeyboard?: () => void,
+                      options: {preserveKeyboard?: boolean} = {}) {
         this.cancelSheetOpen?.();
         this.cancelSheetOpen = undefined;
         applyMenuConfig(this.element);
@@ -625,10 +697,21 @@ export class Menu {
             this.element.lastElementChild.scrollTop = 0;
             return;
         }
+        this.restoreKeyboard = restoreKeyboard;
+        this.preserveSheetKeyboard = Boolean(options.preserveKeyboard);
+        if (!this.preserveSheetKeyboard) {
+            // 普通菜单先结束编辑焦点，等待输入法收起后再展开。
+            (document.activeElement as HTMLElement)?.blur();
+            activeBlur(true);
+        }
         clearTimeout(fullscreenCloseTimeout);
         this.element.querySelectorAll(":scope > .b3-menu__items, .b3-menu__submenu > .b3-menu__items")
             .forEach(updateMenuItemGroupClasses);
         this.element.classList.add("b3-menu--fullscreen", "b3-menu--sheet");
+        if (this.preserveSheetKeyboard || this.element.classList.contains("b3-menu--fit")) {
+            // 输入法弹出后视口会异步收缩，持续跟踪视口才能按最终可用高度重新适配内容
+            this.startTrackingSheetViewport();
+        }
         this.element.style.transform = "translateY(100%)";
         this.showFullscreenScrim();
         this.element.style.zIndex = (++window.siyuan.zIndex).toString();
@@ -637,6 +720,11 @@ export class Menu {
         window.addEventListener("touchmove", this.preventDefault, {passive: false});
         this.setSheetHeight();
         void this.element.offsetHeight;
+        if (this.preserveSheetKeyboard) {
+            this.element.style.transform = "translateY(0px)";
+            this.element.lastElementChild.scrollTop = 0;
+            return;
+        }
         const mobileSize = window.siyuan.mobile.size;
         const orientationSize = mobileSize.isLandscape ? mobileSize.landscape : mobileSize.portrait;
         this.cancelSheetOpen = waitForSheetViewport({

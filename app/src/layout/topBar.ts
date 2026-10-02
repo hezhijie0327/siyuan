@@ -58,8 +58,10 @@ export const syncHideToolbarLayout = () => {
     if (!isWindow()) {
         sendTrafficLightPosition(window.siyuan.storage[Constants.LOCAL_ZOOM]);
         if (!window.siyuan.config.appearance.hideToolbar) {
-            const title = document.querySelector('.layout-tab-bar .item--focus[data-type="tab-header"] .item__text')?.textContent || "";
-            setTitle(title, title ? false : true);
+            const tabHeader = document.querySelector('.layout__wnd--active .layout-tab-bar .item--focus[data-type="tab-header"]') ||
+                document.querySelector('.layout-tab-bar .item--focus[data-type="tab-header"]');
+            const title = tabHeader?.querySelector(".item__text")?.textContent || "";
+            setTitle(title, !title, tabHeader?.querySelector(".item__icon"));
         }
     } else {
         return;
@@ -86,7 +88,7 @@ export const initBar = (app: App) => {
     <svg><use xlink:href="#iconCloudSucc"></use></svg>
 </div>
 <button id="barDailyNote" data-topbar-entry="barDailyNote" class="ariaLabel toolbar__item${window.siyuan.config.readonly ? " fn__none" : ""}" aria-label="${window.siyuan.languages.dailyNote} ${updateHotkeyTip(window.siyuan.config.keymap.general.dailyNote.custom)}">
-    <svg><use xlink:href="#iconCalendar"></use></svg>
+    <svg><use xlink:href="#iconCalendarPlus"></use></svg>
 </button>
 <button id="barRiffCard" data-topbar-entry="barRiffCard" class="ariaLabel toolbar__item${window.siyuan.config.readonly ? " fn__none" : ""}" aria-label="${window.siyuan.languages.riffCard} ${updateHotkeyTip(window.siyuan.config.keymap.general.riffCard.custom)}">
     <svg><use xlink:href="#iconRiffCard"></use></svg>
@@ -115,9 +117,9 @@ export const initBar = (app: App) => {
 <div id="barMode" data-topbar-entry="barMode" class="toolbar__item ariaLabel${window.siyuan.config.readonly ? " fn__none" : ""}" aria-label="${window.siyuan.languages.appearanceMode}">
     <svg><use xlink:href="#icon${window.siyuan.config.appearance.modeOS ? "Mode" : (window.siyuan.config.appearance.mode === 0 ? "Light" : "Dark")}"></use></svg>
 </div>
-<div id="barExit" data-topbar-entry="barExit" class="ft__error toolbar__item ariaLabel${isInMobileApp() ? "" : " fn__none"}" aria-label="${window.siyuan.languages.safeQuit}">
+${isInMobileApp() ? `<div id="barExit" data-topbar-entry="barExit" class="ft__error toolbar__item ariaLabel" aria-label="${window.siyuan.languages.safeQuit}">
     <svg><use xlink:href="#iconQuit"></use></svg>
-</div>
+</div>` : ""}
 <div id="barMore" class="toolbar__item ariaLabel" aria-label="${window.siyuan.languages.more}">
     <svg><use xlink:href="#iconMore"></use></svg>
 </div>
@@ -303,6 +305,7 @@ export const initBar = (app: App) => {
                 }).element);
                 window.siyuan.menus.menu.append(new MenuItem({
                     label: window.siyuan.languages.reset,
+                    icon: "iconRefresh",
                     accelerator: "⌘0",
                     click: () => {
                         setZoom("restore");

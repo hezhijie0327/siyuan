@@ -17,6 +17,7 @@
 package model
 
 import (
+	"bytes"
 	"image/color"
 	"net/http"
 	"net/url"
@@ -31,6 +32,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/siyuan-note/logging"
+	"github.com/siyuan-note/siyuan/kernel/apicontract"
 	"github.com/siyuan-note/siyuan/kernel/util"
 	"github.com/steambap/captcha"
 )
@@ -40,14 +42,11 @@ var (
 	BasicAuthHeaderValue = "Basic realm=\"SiYuan Authorization Require\", charset=\"UTF-8\""
 )
 
-func LogoutAuth(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
+func LogoutAuth(c *gin.Context, request apicontract.EmptyRequest) (ret apicontract.Response[apicontract.Null]) {
+	ret = apicontract.Success(apicontract.Null{})
 
 	if !IsAccessAuthRequired() {
-		ret.Code = -1
-		ret.Msg = Conf.Language(86)
-		ret.Data = map[string]any{"closeTimeout": 5000}
+		ret = apicontract.FailureWithTimeout[apicontract.Null](-1, Conf.Language(86), 5000)
 		return
 	}
 
@@ -56,82 +55,70 @@ func LogoutAuth(c *gin.Context) {
 	if err := session.Save(c); err != nil {
 		logging.LogError("saves session failed: " + err.Error())
 		session.Clear(c)
-		ret.Code = 1
-		ret.Msg = Conf.Language(258)
+		ret = apicontract.Failure[apicontract.Null](1, Conf.Language(258))
 		return
 	}
 
 	util.BroadcastByType("main", "logoutAuth", 0, "", nil)
+	return
 }
 
-func LoginAuth(c *gin.Context) {
-	ret := gulu.Ret.NewResult()
-	defer c.JSON(http.StatusOK, ret)
-
-	arg, ok := util.JsonArg(c, ret)
-	if !ok {
-		return
-	}
+func LoginAuth(c *gin.Context, request apicontract.SystemLoginAuthRequest) (ret apicontract.Response[apicontract.Null]) {
+	ret = apicontract.Success(apicontract.Null{})
 
 	var inputCaptcha string
 	session := util.GetSession(c)
 	workspaceSession := util.GetWorkspaceSession(session)
 	if util.NeedCaptcha() {
-		captchaArg := arg["captcha"]
-		if nil == captchaArg {
-			ret.Code = 1
-			ret.Msg = Conf.Language(21)
+		if request.CaptchaError() != nil {
+			return apicontract.Failure[apicontract.Null](-1, request.CaptchaError().Error())
+		}
+		if request.Captcha == "" {
+			ret = apicontract.Failure[apicontract.Null](1, Conf.Language(21))
 			logging.LogWarnf("invalid captcha")
 			return
 		}
-		inputCaptcha = captchaArg.(string)
-		if "" == inputCaptcha {
-			ret.Code = 1
-			ret.Msg = Conf.Language(21)
-			logging.LogWarnf("invalid captcha")
-			return
-		}
+		inputCaptcha = request.Captcha
 
 		if strings.ToLower(workspaceSession.Captcha) != strings.ToLower(inputCaptcha) {
-			ret.Code = 1
-			ret.Msg = Conf.Language(22)
+			ret = apicontract.Failure[apicontract.Null](1, Conf.Language(22))
 			logging.LogWarnf("invalid captcha")
 
 			workspaceSession.Captcha = gulu.Rand.String(7) // https://github.com/siyuan-note/siyuan/issues/13147
 			if err := session.Save(c); err != nil {
 				logging.LogError("save session failed: " + err.Error())
 				session.Clear(c)
-				ret.Code = 1
-				ret.Msg = Conf.Language(258)
+				ret = apicontract.Failure[apicontract.Null](1, Conf.Language(258))
 				return
 			}
 			return
 		}
 	}
 
-	authCode := arg["authCode"].(string)
+	if request.AuthCodeError() != nil {
+		return apicontract.Failure[apicontract.Null](-1, request.AuthCodeError().Error())
+	}
+	authCode := request.AuthCode
 	authCode = util.RemoveInvalid(authCode)
 	authCode = strings.TrimSpace(authCode)
 
 	if Conf.AccessAuthCode == "" || !util.AuthCodeEquals(Conf.AccessAuthCode, authCode) {
-		ret.Code = -1
-		ret.Msg = Conf.Language(83)
+		code := -1
 		logging.LogWarnf("invalid auth code [ip=%s]", util.GetRemoteAddr(c.Request))
 
 		util.WrongAuthCount++
 		workspaceSession.Captcha = gulu.Rand.String(7)
 		if util.NeedCaptcha() {
-			ret.Code = 1 // 需要渲染验证码
+			code = 1 // 需要渲染验证码
 		}
 
 		if err := session.Save(c); err != nil {
 			logging.LogError("save session failed: " + err.Error())
 			session.Clear(c)
-			ret.Code = 1
-			ret.Msg = Conf.Language(258)
+			ret = apicontract.Failure[apicontract.Null](1, Conf.Language(258))
 			return
 		}
-		return
+		return apicontract.Failure[apicontract.Null](code, Conf.Language(83))
 	}
 
 	workspaceSession.AccessAuthCode = authCode
@@ -141,7 +128,7 @@ func LoginAuth(c *gin.Context) {
 	workspaceSession.Captcha = gulu.Rand.String(7)
 
 	maxAge := 0 // Default session expiration (browser session)
-	if rememberMe, ok := arg["rememberMe"].(bool); ok && rememberMe {
+	if request.RememberMe {
 		// Add a 'Remember me' checkbox when logging in to save a session https://github.com/siyuan-note/siyuan/pull/14964
 		maxAge = 60 * 60 * 24 * 30 // 30 days
 	}
@@ -157,15 +144,15 @@ func LoginAuth(c *gin.Context) {
 	if err := session.Save(c); err != nil {
 		logging.LogError("save session failed: " + err.Error())
 		session.Clear(c)
-		ret.Code = 1
-		ret.Msg = Conf.Language(258)
+		ret = apicontract.Failure[apicontract.Null](1, Conf.Language(258))
 		return
 	}
 
 	util.BroadcastByType("auth", "loginAuth", 0, "", nil)
+	return
 }
 
-func GetCaptcha(c *gin.Context) {
+func GetCaptcha(c *gin.Context, request apicontract.EmptyRequest) apicontract.Response[apicontract.BinaryContent] {
 	img, err := captcha.New(100, 26, func(options *captcha.Options) {
 		options.CharPreset = "ABCDEFGHKLMNPQRSTUVWXYZ23456789"
 		options.Noise = 0.5
@@ -174,8 +161,7 @@ func GetCaptcha(c *gin.Context) {
 	})
 	if err != nil {
 		logging.LogError("generates captcha failed: " + err.Error())
-		c.Status(http.StatusInternalServerError)
-		return
+		return apicontract.EmptyHTTPResponse[apicontract.BinaryContent](http.StatusInternalServerError)
 	}
 
 	session := util.GetSession(c)
@@ -183,16 +169,15 @@ func GetCaptcha(c *gin.Context) {
 	workspaceSession.Captcha = img.Text
 	if err = session.Save(c); err != nil {
 		logging.LogError("save session failed: " + err.Error())
-		c.Status(http.StatusInternalServerError)
-		return
+		return apicontract.EmptyHTTPResponse[apicontract.BinaryContent](http.StatusInternalServerError)
 	}
 
-	if err = img.WriteImage(c.Writer); err != nil {
+	var data bytes.Buffer
+	if err = img.WriteImage(&data); err != nil {
 		logging.LogError("writes captcha image failed: " + err.Error())
-		c.Status(http.StatusInternalServerError)
-		return
+		return apicontract.EmptyHTTPResponse[apicontract.BinaryContent](http.StatusInternalServerError)
 	}
-	c.Status(http.StatusOK)
+	return apicontract.SuccessHTTPContent(http.StatusOK, "image/png", data.Bytes())
 }
 
 func CheckReadonly(c *gin.Context) {
@@ -281,17 +266,20 @@ func CheckAuth(c *gin.Context) {
 		return
 	}
 
-	// 放过来自本机的某些请求
 	if localhost {
 		// 校验浏览器来源，防止恶意网页借助受害者浏览器作为环回客户端绕过锁屏鉴权
 		// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-9gpj-3rm3-x42m
-		if util.IsCrossSiteFetchSite(c.GetHeader("Sec-Fetch-Site")) || !isLocalHostRequestAllowed(c) {
+		if util.IsCrossSiteFetchSite(c.GetHeader("Sec-Fetch-Site")) && !util.IsSessionOriginAllowedRequest(c.Request) {
 			logging.LogWarnf("invalid local host pass-through request [ip=%s, origin=%s, host=%s, uri=%s]",
 				c.ClientIP(), c.GetHeader("Origin"), c.Request.Host, c.Request.RequestURI)
 			c.JSON(http.StatusUnauthorized, map[string]any{"code": -1, "msg": "Auth failed: invalid request origin"})
 			c.Abort()
 			return
 		}
+	}
+
+	// 仅对可信本机来源免认证放行，其他来源继续校验会话或密码，兼容经环回地址转发的远程访问。
+	if localhost && isLocalHostRequestAllowed(c) {
 		if strings.HasPrefix(c.Request.RequestURI, "/assets/") || strings.HasPrefix(c.Request.RequestURI, "/export/") {
 			c.Set(RoleContextKey, RoleAdministrator)
 			c.Next()
@@ -325,8 +313,9 @@ func CheckAuth(c *gin.Context) {
 		// 同时拒绝浏览器标记的跨站请求，防止跨站 GET 导航不带 Origin 时绕过校验
 		// https://github.com/siyuan-note/siyuan/security/advisories/GHSA-2w6q-wgc8-q743
 		if !util.IsSessionOriginAllowedRequest(c.Request) {
-			logging.LogWarnf("invalid Origin [%s] for session auth [ip=%s]", c.GetHeader("Origin"), c.ClientIP())
-			c.JSON(http.StatusUnauthorized, map[string]any{"code": -1, "msg": "Auth failed: invalid Origin"})
+			logging.LogWarnf("invalid session request origin [origin=%s, fetch-site=%s, ip=%s]",
+				c.GetHeader("Origin"), c.GetHeader("Sec-Fetch-Site"), c.ClientIP())
+			c.JSON(http.StatusUnauthorized, map[string]any{"code": -1, "msg": "Auth failed: invalid request origin"})
 			c.Abort()
 			return
 		}
@@ -540,6 +529,18 @@ func ControlConcurrency(c *gin.Context) {
 	}
 
 	reqPath := c.Request.URL.Path
+
+	// 插件 RPC 独立处理各次调用，避免单个调用阻塞其他插件或信息查询。
+	if reqPath == "/api/plugin/rpc" {
+		c.Next()
+		return
+	}
+
+	// 文件上传在表单接收完成后由处理函数串行写入，避免等待锁的上传占满 HTTP/2 接收窗口。
+	if reqPath == "/api/file/putFile" {
+		c.Next()
+		return
+	}
 
 	// Improve the concurrency of the kernel data reading interfaces https://github.com/siyuan-note/siyuan/issues/10149
 	if strings.HasPrefix(reqPath, "/stage/") ||

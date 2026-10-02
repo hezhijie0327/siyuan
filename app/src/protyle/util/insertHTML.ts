@@ -1,3 +1,4 @@
+import {prepareInlineElementBoundaryMutation} from "./inlineElementBoundary";
 import {
     hasClosestBlock,
     hasClosestByAttribute,
@@ -30,7 +31,8 @@ import {highlightRender} from "../render/highlightRender";
 import {scrollCenter} from "../../util/highlightById";
 import {updateAttrViewCellAnimation, updateAVName} from "../render/av/action";
 import {getDefaultDateFormat} from "../render/av/dateFormat";
-import {genCellValue, updateCellsValue} from "../render/av/cell";
+import {genCellValue, genCellValueByElement, updateCellsValue} from "../render/av/cell";
+import {getAVBindingOperations} from "../render/av/binding";
 import {input} from "../wysiwyg/input";
 import {updateListOrder} from "../wysiwyg/list";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
@@ -42,6 +44,7 @@ import {
     AV_PASTE_READONLY_TYPES,
     compactAVCellOperations,
     getAVPasteCellValue,
+    getAVPasteContentRowCount,
     getAVPasteValueForType,
     getAVPasteMatrixWidth,
     getUniqueAVPasteColumnName,
@@ -62,6 +65,7 @@ import {getAVSelectedTableCells} from "../render/av/virtualScroll";
 import {resetCodeBlockRenderState} from "./codeBlockRenderState";
 import {getTextWithoutSemanticMarkers} from "./inlineElementMarker";
 import {normalizeHTMLAssetIFrameSources} from "../../asset/html";
+import {renderIFrameResize} from "../render/iframeResize";
 
 // 粘贴时临时插入的占位行标记，遍历结束后统一移除，避免污染虚拟滚动的 renderedStart/renderedEnd/spacer 状态
 const PLACEHOLDER_ROW_CLASS = "av__row--placeholder";
@@ -161,7 +165,7 @@ const insertAVPastePlaceholder = (bodyElement: HTMLElement, view: IAVTable, row:
         row,
         rowIndex,
         pinIndex: getAVPastePinIndex(bodyElement),
-        type: "table",
+        type: bodyElement.closest<HTMLElement>(".av")?.dataset.avType === "list" ? "list" : "table",
     }));
     const rowElement = bottomElement.previousElementSibling as HTMLElement;
     rowElement.classList.add(PLACEHOLDER_ROW_CLASS);
@@ -206,7 +210,7 @@ const syncAVPasteRowCells = (options: {
         row: options.row,
         rowIndex: options.rowIndex,
         pinIndex: getAVPastePinIndex(options.bodyElement),
-        type: "table",
+        type: options.bodyElement.closest<HTMLElement>(".av")?.dataset.avType === "list" ? "list" : "table",
     });
     options.columnIDs.forEach(columnID => {
         const nextCell = template.content.querySelector(`.av__cell[data-col-id="${columnID}"]`) as HTMLElement;
@@ -321,9 +325,12 @@ const pasteAVMatrix = async (options: {
         startItemID,
         count: Math.max(options.values.length, 1),
     });
-    const view = response.data?.view as IAVTable;
+    if (response.code !== 0) {
+        return;
+    }
+    const view: IAVTable = response.data?.view;
     const rows = view?.rows;
-    if (response.code !== 0 || !Array.isArray(rows) || rows.length === 0) {
+    if (!Array.isArray(rows) || rows.length === 0) {
         return;
     }
 
@@ -463,6 +470,8 @@ const pasteAVMatrix = async (options: {
             action: "addAttrViewCol",
             name,
             avID: options.blockElement.dataset.avId,
+            blockID: options.blockElement.dataset.nodeId,
+            viewID: options.blockElement.getAttribute(Constants.CUSTOM_SY_AV_VIEW) || "",
             type,
             format: getDefaultDateFormat(type),
             id,
@@ -693,6 +702,9 @@ const processAV = (range: Range, html: string, protyle: IProtyle, blockElement: 
                 cellHTML.push(rowHTML);
             }
         });
+        const contentRowCount = getAVPasteContentRowCount(values);
+        values.length = contentRowCount;
+        cellHTML.length = contentRowCount;
         headerCandidate = isAVPasteHeaderCandidate(values, headerCandidate);
     }
     const avID = blockElement.dataset.avId;
@@ -731,19 +743,9 @@ const processAV = (range: Range, html: string, protyle: IProtyle, blockElement: 
             if (selectCellElement) {
                 const sourceId = contenteditableElement.firstElementChild.getAttribute("data-id");
                 const previousID = getFieldIdByCellElement(selectCellElement, blockElement.getAttribute("data-av-type") as TAVView);
-                transaction(protyle, [{
-                    action: "replaceAttrViewBlock",
-                    avID,
-                    previousID,
-                    nextID: sourceId,
-                    isDetached: false,
-                }], [{
-                    action: "replaceAttrViewBlock",
-                    avID,
-                    previousID: sourceId,
-                    nextID: previousID,
-                    isDetached: selectCellElement.dataset.detached === "true",
-                }]);
+                const operations = getAVBindingOperations(avID, previousID, sourceId, blockElement.dataset.nodeId,
+                    genCellValueByElement("block", selectCellElement), {protyleID: protyle.id});
+                transaction(protyle, operations.doOperations, operations.undoOperations);
                 updateAttrViewCellAnimation(selectCellElement, {
                     type: "block",
                     isDetached: false,
@@ -914,6 +916,7 @@ export const insertHTML = (html: string, protyle: IProtyle, isBlock = false,
         isBlock = true;
     }
     const range = useProtyleRange ? protyle.toolbar.range : getEditorRange(protyle.wysiwyg.element);
+    prepareInlineElementBoundaryMutation(range);
     const rangeStartBlockElement = hasClosestBlock(range.startContainer);
     const rangeEndBlockElement = hasClosestBlock(range.endContainer);
     if (!range.collapsed && rangeStartBlockElement && rangeEndBlockElement &&
@@ -1446,6 +1449,7 @@ export const insertHTML = (html: string, protyle: IProtyle, isBlock = false,
             } else {
                 blockElement.after(item);
             }
+            renderIFrameResize(item);
         }
         if (!lastElement && !hasParentHeading) {
             lastElement = item;
@@ -1506,7 +1510,7 @@ export const insertHTML = (html: string, protyle: IProtyle, isBlock = false,
         fetchPost("/api/block/getHeadingChildrenIDs", {id: blockElement.getAttribute("data-node-id")}, (response) => {
             const childrenIDs: string[] = response.data;
             const previousId = (childrenIDs && childrenIDs.length > 0) ? childrenIDs[childrenIDs.length - 1] : blockElement.getAttribute("data-node-id");
-            foldData = setFold(protyle, blockElement, true, false, false, true);
+            foldData = setFold(protyle, blockElement, true, false, true);
             if (foldData.doOperations.length > 0) {
                 foldData.doOperations[0].context = {
                     focusId: lastElement?.getAttribute("data-node-id"),

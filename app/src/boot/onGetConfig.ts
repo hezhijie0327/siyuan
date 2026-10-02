@@ -10,6 +10,7 @@ import * as fs from "fs";
 import * as path from "path";
 import {afterExport} from "../protyle/export/util";
 import {onWindowsMsg} from "../window/onWindowsMsg";
+import {applyWindowState, initWindowControls} from "./windowControls";
 /// #endif
 import {Constants} from "../constants";
 import {appearanceConfigApi} from "../config/tabs/appearanceRuntime";
@@ -157,6 +158,8 @@ export const onGetConfig = (isStart: boolean, app: App) => {
 
 export const initWindow = async (app: App) => {
     /// #if !BROWSER
+    // 主窗口和独立窗口都先同步本地化菜单，不依赖后续异步窗口状态查询。
+    syncAppMenuShortcuts();
     ipcRenderer.send(Constants.SIYUAN_CMD, {
         cmd: "setSpellCheckerLanguages",
         languages: window.siyuan.config.editor.spellcheckLanguages
@@ -183,28 +186,16 @@ export const initWindow = async (app: App) => {
 
     ipcRenderer.send(Constants.SIYUAN_EVENT);
     ipcRenderer.on(Constants.SIYUAN_EVENT, (event, cmd) => {
+        applyWindowState(cmd);
         if (cmd === "focus") {
             // 由于 https://github.com/siyuan-note/siyuan/issues/10060 和新版 electron 应用切出再切进会保持光标，故移除 focus
             window.siyuan.altIsPressed = false;
             window.siyuan.ctrlIsPressed = false;
             window.siyuan.shiftIsPressed = false;
-            document.body.classList.remove("body--blur");
-        } else if (cmd === "blur") {
-            document.body.classList.add("body--blur");
         } else if (cmd === "enter-full-screen") {
-            document.body.classList.add("body--fullscreen");
-            // 全屏下红绿灯隐藏，清除缩放补偿让 body--fullscreen 的 5px 生效
-            setToolbarLeftMac(window.siyuan.storage[Constants.LOCAL_ZOOM]);
             setTabPosition();
         } else if (cmd === "leave-full-screen") {
-            document.body.classList.remove("body--fullscreen");
-            // 退出全屏后按当前缩放重新补偿
-            setToolbarLeftMac(window.siyuan.storage[Constants.LOCAL_ZOOM]);
             setTabPosition();
-        } else if (cmd === "maximize") {
-            document.body.classList.add("body--maximize");
-        } else if (cmd === "unmaximize") {
-            document.body.classList.remove("body--maximize");
         }
     });
     if (!isWindow()) {
@@ -272,6 +263,9 @@ export const initWindow = async (app: App) => {
         try {
             if (window.siyuan.config.export.pdfFooter.trim()) {
                 const response = await fetchSyncPost("/api/template/renderSprig", {template: window.siyuan.config.export.pdfFooter});
+                if (response.code !== 0) {
+                    throw new Error(response.msg);
+                }
                 ipcData.pdfOptions.displayHeaderFooter = true;
                 ipcData.pdfOptions.headerTemplate = "<span></span>";
                 ipcData.pdfOptions.footerTemplate = `<div style="text-align:center;width:100%;font-size:10px;line-height:12px;">
@@ -285,13 +279,15 @@ ${response.data.replace("%pages", "<span class=totalPages></span>").replace("%pa
             });
             let pdfFilePath = path.join(savePath, replaceLocalPath(ipcData.rootTitle) + ".pdf");
             const responseUnique = await fetchSyncPost("/api/file/getUniqueFilename", {path: pdfFilePath});
+            if (responseUnique.code !== 0 || !responseUnique.data) {
+                return;
+            }
             pdfFilePath = responseUnique.data.path;
             fetchPost("/api/export/exportHTML", {
                 id: ipcData.rootId,
                 pdf: true,
                 addTitle: ipcData.addTitle,
                 customTitle: ipcData.customTitle,
-                removeAssets: ipcData.removeAssets,
                 merge: ipcData.mergeSubdocs,
                 mergeDocHeadingMode: ipcData.mergeDocHeadingMode,
                 mergeContentHeadingMode: ipcData.mergeContentHeadingMode,
@@ -353,20 +349,21 @@ ${response.data.replace("%pages", "<span class=totalPages></span>").replace("%pa
         });
         document.body.insertAdjacentHTML("beforeend", `<div class="toolbar__window">
 <div class="toolbar__window-drag"></div>
-<div class="toolbar__item ariaLabel" aria-label="${window.siyuan.languages[isAlwaysOnTop ? "unpin" : "pin"]}" id="pinWindow">
+<div class="toolbar__item ariaLabel" data-window-topbar-entry="pinWindow" aria-label="${window.siyuan.languages[isAlwaysOnTop ? "unpinWindow" : "pinWindow"]}" id="pinWindow">
     <svg>
         <use xlink:href="#icon${isAlwaysOnTop ? "Unpin" : "Pin"}"></use>
     </svg>
 </div></div>`);
         const pinElement = document.getElementById("pinWindow");
+        void import("../window/workspace").then(({initWindowWorkspace}) => initWindowWorkspace());
         pinElement.addEventListener("click", () => {
-            if (pinElement.getAttribute("aria-label") === window.siyuan.languages.pin) {
+            if (pinElement.getAttribute("aria-label") === window.siyuan.languages.pinWindow) {
                 pinElement.querySelector("use").setAttribute("xlink:href", "#iconUnpin");
-                pinElement.setAttribute("aria-label", window.siyuan.languages.unpin);
+                pinElement.setAttribute("aria-label", window.siyuan.languages.unpinWindow);
                 ipcRenderer.send(Constants.SIYUAN_CMD, "setAlwaysOnTopTrue");
             } else {
                 pinElement.querySelector("use").setAttribute("xlink:href", "#iconPin");
-                pinElement.setAttribute("aria-label", window.siyuan.languages.pin);
+                pinElement.setAttribute("aria-label", window.siyuan.languages.pinWindow);
                 ipcRenderer.send(Constants.SIYUAN_CMD, "setAlwaysOnTopFalse");
             }
         });
@@ -390,51 +387,9 @@ ${response.data.replace("%pages", "<span class=totalPages></span>").replace("%pa
     if (!isMac()) {
         document.body.classList.add("body--win32");
 
-        // 添加窗口控件
-        const controlsHTML = `<div class="toolbar__item ariaLabel toolbar__item--win" aria-label="${window.siyuan.languages.min}" id="minWindow">
-    <svg>
-        <use xlink:href="#iconMin"></use>
-    </svg>
-</div>
-<div aria-label="${window.siyuan.languages.max}" class="ariaLabel toolbar__item toolbar__item--win" id="maxWindow">
-    <svg>
-        <use xlink:href="#iconMax"></use>
-    </svg>
-</div>
-<div aria-label="${window.siyuan.languages.restore}" class="ariaLabel toolbar__item toolbar__item--win" id="restoreWindow">
-    <svg>
-        <use xlink:href="#iconRestore"></use>
-    </svg>
-</div>
-<div aria-label="${window.siyuan.languages.close}" class="ariaLabel toolbar__item toolbar__item--close" id="closeWindow">
-    <svg>
-        <use xlink:href="#iconClose"></use>
-    </svg>
-</div>`;
-        if (isWindow()) {
-            document.querySelector(".toolbar__window").insertAdjacentHTML("beforeend", controlsHTML);
-        } else {
-            document.getElementById("windowControls").innerHTML = controlsHTML;
-        }
-        const maxBtnElement = document.getElementById("maxWindow");
-        const restoreBtnElement = document.getElementById("restoreWindow");
-
-        restoreBtnElement.addEventListener("click", () => {
-            ipcRenderer.send(Constants.SIYUAN_CMD, "restore");
-        });
-        maxBtnElement.addEventListener("click", () => {
-            ipcRenderer.send(Constants.SIYUAN_CMD, "maximize");
-        });
-
-        const minBtnElement = document.getElementById("minWindow");
-        const closeBtnElement = document.getElementById("closeWindow");
-        minBtnElement.addEventListener("click", () => {
-            if (minBtnElement.classList.contains("window-controls__item--disabled")) {
-                return;
-            }
-            ipcRenderer.send(Constants.SIYUAN_CMD, "minimize");
-        });
-        closeBtnElement.addEventListener("click", () => {
+        const controls = isWindow() ? document.querySelector<HTMLElement>(".toolbar__window") : document.getElementById("windowControls");
+        if (!isWindow()) controls.replaceChildren();
+        initWindowControls(controls, () => {
             if (isWindow()) {
                 closeWindow(app);
             } else {
@@ -442,7 +397,6 @@ ${response.data.replace("%pages", "<span class=totalPages></span>").replace("%pa
             }
         });
     }
-    syncAppMenuShortcuts();
     /// #else
     if (!isWindow()) {
         document.querySelector(".toolbar").classList.add("toolbar--browser");

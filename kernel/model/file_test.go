@@ -826,6 +826,21 @@ func TestPerformCreateDocTransactionSyncReturnsWriteError(t *testing.T) {
 	}
 }
 
+func TestCreateDocByMdSyncReturnsWriteError(t *testing.T) {
+	fixture := setupFileOperationTest(t)
+	docID := "20260718000009-abcdefg\x00"
+	tree, err := CreateDocByMdSync(fixture.box.ID, "/"+docID+".sy", "Inbox", "Keep the cloud original", nil, nil)
+	if tree == nil {
+		t.Fatal("expected document validation to succeed before the filesystem write fails")
+	}
+	if err == nil {
+		t.Fatal("expected Markdown document creation to return the write error")
+	}
+	if bt := treenode.GetBlockTree(docID); bt != nil {
+		t.Fatal("failed document remains in the block tree")
+	}
+}
+
 func TestGetHPathsByPathsUsesDocumentRoot(t *testing.T) {
 	fixture := setupFileOperationTest(t)
 	tree, err := LoadTreeByBlockID(fixture.sourceID)
@@ -978,6 +993,38 @@ func TestMoveDocsRejectsInvalidPathsBeforeMoving(t *testing.T) {
 				t.Fatalf("target document was created for invalid source paths [%v]", test.fromPaths)
 			}
 		})
+	}
+}
+
+func TestMoveDocsRejectsSelfAndDescendantsBeforeMoving(t *testing.T) {
+	fixture := setupFileOperationTest(t)
+	childPath := strings.TrimSuffix(fixture.sourcePath, ".sy") + "/20260718000003-abcdefg.sy"
+	grandchildPath := strings.TrimSuffix(childPath, ".sy") + "/20260718000004-abcdefg.sy"
+	for _, docPath := range []string{childPath, grandchildPath} {
+		tree := treenode.NewTree(fixture.box.ID, docPath, "/Source/Descendant", "Descendant")
+		if _, err := filesys.WriteTree(tree); err != nil {
+			t.Fatal(err)
+		}
+		treenode.UpsertBlockTree(tree)
+		t.Cleanup(func() {
+			cache.RemoveTreeData(tree.ID)
+			cache.RemoveDocIAL(tree.Path)
+		})
+	}
+	for _, targetPath := range []string{fixture.sourcePath, childPath, grandchildPath} {
+		for _, sources := range [][]string{{fixture.sourcePath}, {fixture.targetPath, fixture.sourcePath}} {
+			if err := MoveDocs(sources, fixture.box.ID, targetPath, nil); err == nil || err.Error() != Conf.Language(87) {
+				t.Fatalf("expected invalid move target error for %v to %s, got %v", sources, targetPath, err)
+			}
+			for _, docPath := range []string{fixture.sourcePath, fixture.targetPath, childPath, grandchildPath} {
+				if !fixture.box.Exist(docPath) {
+					t.Fatalf("invalid move changed document %s", docPath)
+				}
+				if bt := treenode.GetBlockTree(util.GetTreeID(docPath)); bt == nil || bt.Path != docPath {
+					t.Fatalf("invalid move changed document index %s: %+v", docPath, bt)
+				}
+			}
+		}
 	}
 }
 

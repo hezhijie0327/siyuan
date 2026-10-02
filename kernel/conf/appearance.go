@@ -80,7 +80,7 @@ func (appearance *Appearance) NormalizeGlobalFontFamilies() {
 }
 
 const (
-	EntryVisibilityVersion       = 5
+	EntryVisibilityVersion       = 6
 	EntryVisibilityProfileSimple = "simple"
 	EntryVisibilityProfileFull   = "full"
 )
@@ -165,6 +165,10 @@ func NormalizeEntryVisibility(entryVisibility *EntryVisibility, fallback string)
 				profile.Orders[parent+".database"] = children
 			}
 		}
+		if version < 6 {
+			migrateTaskStatusMenu(profile)
+		}
+		migrateChartHeightMenu(profile)
 		profileIDs[profile.ID] = true
 		profiles = append(profiles, profile)
 	}

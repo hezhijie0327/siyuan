@@ -1,3 +1,4 @@
+import type {FileTreeGetDocRequestInput} from "../../types/api";
 import {getIconByType} from "../../editor/getIcon";
 import {removeLoading} from "../ui/initUI";
 import {fetchPost} from "../../util/fetch";
@@ -61,9 +62,9 @@ const removeBacklinkDOMRecord = (record: IBacklinkDOMRecord) => {
     getBacklinkDOMNodes(record.anchor).forEach(item => item.parentNode?.removeChild(item));
 };
 
-const createBacklinkDOMRecord = (item: IBacklinkData, index: number, id: string) => {
+const createBacklinkDOMRecord = (item: IBacklinkData, index: number, id: string, showDocument: boolean) => {
     const template = document.createElement("template");
-    template.innerHTML = genBreadcrumb(item.blockPaths, false, index, id) + setBacklinkFold(item.dom, item.expand);
+    template.innerHTML = genBreadcrumb(item.blockPaths, showDocument, index, id) + setBacklinkFold(item.dom, item.expand);
     markBacklinkReference(template.content, item.referenceBlockID);
     const nodes = Array.from(template.content.childNodes);
     (nodes[0] as HTMLElement).setAttribute("data-backlink-revision", item.revision || "");
@@ -132,7 +133,7 @@ export const renderBacklink = (protyle: IProtyle, backlinkData: IBacklinkData[])
         }
         if (!record || !item.revision || record.revision !== item.revision) {
             clearViewFoldDefaults(protyle, id);
-            const created = createBacklinkDOMRecord(item, index, id);
+            const created = createBacklinkDOMRecord(item, index, id, protyle.element.hasAttribute("data-backlink-show-document"));
             if (record) {
                 const restoreAVScroll = reuseBacklinkAVSources(created.nodes, created.record.databases, record.databases);
                 created.nodes.forEach(node => element.insertBefore(node, record.anchor));
@@ -224,7 +225,7 @@ const setBacklinkFold = (html: string, expand: boolean) => {
 };
 
 export const loadBreadcrumb = (protyle: IProtyle, element: HTMLElement) => {
-    const getDocParam: IObject = {
+    const getDocParam: FileTreeGetDocRequestInput = {
         id: element.getAttribute("data-id"),
         size: Constants.SIZE_GET_MAX,
     };
@@ -232,6 +233,9 @@ export const loadBreadcrumb = (protyle: IProtyle, element: HTMLElement) => {
         getDocParam.notebook = protyle.notebookId;
     }
     fetchPost("/api/filetree/getDoc", getDocParam, getResponse => {
+        if (getResponse.code !== 0) {
+            return;
+        }
         element.parentElement.querySelector(".protyle-breadcrumb__item--active").classList.remove("protyle-breadcrumb__item--active");
         element.classList.add("protyle-breadcrumb__item--active");
         let nextElement = element.parentElement.nextElementSibling;

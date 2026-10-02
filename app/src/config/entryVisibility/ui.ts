@@ -38,15 +38,19 @@ import {
     getProfileEntryVisibility,
     isEntryVisibilityImportVersionSupported,
     normalizeEntryVisibilityImportProfile,
+    resetEntryProfileOrder,
     TEntryVisibilityImportProfile,
 } from "./profile";
 import {getHostCapabilities} from "../../util/hostCapabilities";
 import {isMobile} from "../../util/functions";
+import {isInMobileApp} from "../../protyle/util/compatibility";
+import {bindTouchOrder} from "./touchOrder";
 import {MOBILE_TOOLBAR_NAMES, TOOLBAR_ENTRY_ROOT_PATH} from "../../protyle/toolbar/defaults";
 import {
     DOCK_ORDER_SCOPES,
     DOCK_ORDER_SCOPES_BY_SIDE,
     getDockEntryOrderSnapshot,
+    getDefaultDockEntryOrderSnapshot,
     getDockOrderScopeLabelKey,
     isDockOrderScope,
     mergeDockEntryOrderSnapshot,
@@ -55,14 +59,14 @@ import {
     TDockOrderSnapshot,
 } from "./dockOrder";
 
-const getVisibleEntryCatalog = () => isMobile() ? entryCatalog.filter(item => item.key === TOOLBAR_ENTRY_ROOT_PATH)
-    .map(item => ({...item, children: item.children.filter(child => child.type === "separator" ||
-        MOBILE_TOOLBAR_NAMES.includes(child.key) || child.key.startsWith("plugin:"))})) : entryCatalog;
-
-const renderTouchOrderButtons = (enabled: boolean) => isMobile() && enabled ? ["up", "down"].map(direction =>
-    `<button type="button" class="block__icon block__icon--show" data-entry-move="${direction}"
-        aria-label="${escapeAttr(window.siyuan.languages[direction])}">
-        <svg><use xlink:href="#${direction === "up" ? "iconUp" : "iconDown"}"></use></svg></button>`).join("") : "";
+const getVisibleEntryCatalog = () => isMobile() ? entryCatalog.filter(item =>
+    item.key === TOOLBAR_ENTRY_ROOT_PATH || item.key === "editor.slash" || item.key === "editor.image")
+    .map(item => item.key === TOOLBAR_ENTRY_ROOT_PATH ? {...item, children: item.children.filter(child =>
+        child.type === "separator" || child.key.startsWith("mobile-") ||
+        MOBILE_TOOLBAR_NAMES.includes(child.key) || child.key.startsWith("plugin:"))} : item) : entryCatalog.map(item =>
+    item.key === TOOLBAR_ENTRY_ROOT_PATH ? {...item, children: item.children.filter(child => !child.key.startsWith("mobile-"))} :
+    item.key === TOP_BAR_ROOT_PATH && !isInMobileApp() ?
+        {...item, children: item.children.filter(child => child.key !== "barExit")} : item);
 
 type TImportFile = {
     type: "siyuan-entry-profile" | "siyuan-entry-profile-bundle";
@@ -246,8 +250,8 @@ const orderEntryNodes = (profile: Config.IEntryVisibilityProfile, parentPath: st
 };
 
 const renderEntrySwitch = (profile: Config.IEntryVisibilityProfile, path: string, item: IEntryCatalogNode,
-                           parentEnabled: boolean, readOnly: boolean) => {
-    const label = item.type === "separator" ? window.siyuan.languages.entrySeparator : item.label();
+                           parentEnabled: boolean, readOnly: boolean,
+                           label = item.type === "separator" ? window.siyuan.languages.entrySeparator : item.label()) => {
     return `<input class="b3-switch" type="checkbox"
     aria-label="${escapeAttr(label)}" data-entry-path="${escapeAttr(path)}"${readOnly ? ' data-entry-readonly aria-disabled="true"' : ""}
     ${!parentEnabled && !readOnly ? " disabled" : ""}${getProfileEntryVisibility(profile, path,
@@ -262,12 +266,15 @@ const renderEntryRows = (profile: Config.IEntryVisibilityProfile, prefix: string
         const configurable = isEntryCatalogNodeConfigurable(item);
         const draggable = sortable && parentEnabled && configurable;
         if (item.type === "separator") {
+            const separatorIndex = (getEntryCatalogChildren(prefix) || nodes)
+                .filter(node => node.type === "separator").findIndex(node => node.key === item.key) + 1;
+            const label = window.siyuan.languages.entrySeparator +
+                (prefix === TOOLBAR_ENTRY_ROOT_PATH ? ` ${separatorIndex}` : "");
             return `<div class="config-entry-visibility__row config-entry-visibility__row--separator${parentEnabled ? "" : " config-entry-visibility__row--disabled"}${readOnly ? " config-entry-visibility__row--readonly" : ""}"
                 data-entry-row data-entry-key="${escapeAttr(item.key)}" data-entry-parent="${escapeAttr(prefix)}">
-                ${draggable ? '<span class="config-entry-visibility__drag" draggable="true"><svg><use xlink:href="#iconDrag"></use></svg></span>' : ""}
-                <span class="config-entry-visibility__label">${window.siyuan.languages.entrySeparator}</span>
-                ${renderTouchOrderButtons(draggable && !readOnly)}
-                ${renderEntrySwitch(profile, path, item, parentEnabled, readOnly)}
+                ${draggable ? `<span class="block__icon block__icon--show config-entry-visibility__drag" draggable="${!isMobile()}"><svg><use xlink:href="#iconDrag"></use></svg></span>` : ""}
+                <span class="config-entry-visibility__label">${escapeHtml(label)}</span>
+                ${renderEntrySwitch(profile, path, item, parentEnabled, readOnly, label)}
                 <span class="config-entry-visibility__arrow-space"></span>
             </div>`;
         }
@@ -278,13 +285,12 @@ const renderEntryRows = (profile: Config.IEntryVisibilityProfile, prefix: string
         const rowType = hasChildren ? "navigable" : configurable ? "toggleable" : "fixed";
         return `<${rowTag} class="config-entry-visibility__row config-entry-visibility__row--${rowType}${selected ? " config-entry-visibility__row--current" : ""}${parentEnabled ? "" : " config-entry-visibility__row--disabled"}${readOnly ? " config-entry-visibility__row--readonly" : ""}"
             data-entry-row data-entry-key="${escapeAttr(item.key)}" data-entry-parent="${escapeAttr(prefix)}" data-entry-path-row="${escapeAttr(path)}"${hasChildren ? ` data-action="navigate-entry" data-entry-path="${escapeAttr(path)}" data-entry-depth="${depth}"` : ""}>
-            ${draggable ? '<span class="config-entry-visibility__drag" draggable="true"><svg><use xlink:href="#iconDrag"></use></svg></span>' : ""}
+            ${draggable ? `<span class="block__icon block__icon--show config-entry-visibility__drag" draggable="${!isMobile()}"><svg><use xlink:href="#iconDrag"></use></svg></span>` : ""}
             ${hasChildren ? `<button class="config-entry-visibility__navigate" data-action="navigate-entry"
                 data-entry-path="${escapeAttr(path)}" data-entry-depth="${depth}" title="${escapeAttr(label)}">
                 <span>${escapeHtml(label)}</span>
             </button>` : `<span class="config-entry-visibility__label" title="${escapeAttr(label)}">${escapeHtml(label)}</span>`}
             ${configurable ? renderEntrySwitch(profile, path, item, parentEnabled, readOnly) : ""}
-            ${renderTouchOrderButtons(draggable && !readOnly)}
             ${hasChildren ? `<button class="block__icon block__icon--show config-entry-visibility__arrow" data-action="navigate-entry"
                 data-entry-path="${escapeAttr(path)}" data-entry-depth="${depth}" aria-label="${escapeAttr(window.siyuan.languages.expand)}">
                 <svg><use xlink:href="#iconRight"></use></svg>
@@ -299,11 +305,18 @@ const renderEntryColumn = (profile: Config.IEntryVisibilityProfile, title: strin
     data-entry-column data-entry-depth="${depth}">
     <div class="config-entry-visibility__column-title">
         <span class="fn__ellipsis fn__flex-1" title="${escapeAttr(title)}">${escapeHtml(title)}</span>
+        ${sortable ? renderOrderReset(prefix) : ""}
     </div>
     <div class="config-entry-visibility__column-list">
         ${renderEntryRows(profile, prefix, nodes, depth, selectedPaths, parentEnabled, readOnly, sortable, getItemPath)}
     </div>
 </section>`;
+
+const renderOrderReset = (prefix?: string) => `<button class="block__icon block__icon--show ariaLabel"
+    data-action="${prefix ? "reset-entry-order" : "reset-all-entry-orders"}"${prefix ? ` data-entry-parent="${escapeAttr(prefix)}"` : ""} data-position="north"
+    aria-label="${escapeAttr(window.siyuan.languages[prefix ? "entryResetOrder" : "entryResetAllOrders"])}">
+    <svg><use xlink:href="#iconRefresh"></use></svg>
+</button>`;
 
 const getDirectDisplayRoot = (section: IEntryCatalogSection) => section.children.length === 1 &&
     section.children[0].displayChildrenDirectly
@@ -396,7 +409,10 @@ const renderDockColumns = (
                 ? nodes.filter((item) => visiblePaths.has(`${DOCK_SECTION_KEY}.${item.key}`))
                 : nodes;
             return `<section class="config-entry-visibility__dock-group" data-entry-drop-scope="${scope}">
-                <div class="config-entry-visibility__dock-group-title" title="${escapeAttr(scopeLabel)}">${escapeHtml(scopeLabel)}</div>
+                <div class="config-entry-visibility__dock-group-title">
+                    <span class="fn__ellipsis fn__flex-1" title="${escapeAttr(scopeLabel)}">${escapeHtml(scopeLabel)}</span>
+                    ${!visiblePaths && !readOnly ? renderOrderReset(scope) : ""}
+                </div>
                 <div class="config-entry-visibility__dock-list" data-entry-drop-scope="${scope}">
                     ${renderEntryRows(
         profile,
@@ -435,7 +451,10 @@ const renderEntryColumns = (profile: Config.IEntryVisibilityProfile, sectionKey:
         : catalog;
     const section = sections.find((item) => item.key === sectionKey) || sections[0] || catalog[0];
     const locationColumn = `<section class="config-entry-visibility__column config-entry-visibility__column--locations" data-entry-column>
-    <div class="config-entry-visibility__column-title">${window.siyuan.languages.position}</div>
+    <div class="config-entry-visibility__column-title">
+        <span class="fn__ellipsis fn__flex-1">${window.siyuan.languages.position}</span>
+        ${readOnly ? "" : renderOrderReset()}
+    </div>
     <div class="config-entry-visibility__column-list">
         ${sections.map((item) => renderEntryLocation(profile, item, item.key === section.key, readOnly)).join("")}
     </div>
@@ -527,8 +546,8 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
     refreshTopBarCatalog(plugins);
     refreshDockCatalog(plugins);
     refreshSlashMenuCatalog(plugins);
-    const dockOrderSnapshot = getDockEntryOrderSnapshot();
     const builtin = profileID === ENTRY_PROFILE_SIMPLE || profileID === ENTRY_PROFILE_FULL;
+    const dockOrderSnapshot = builtin ? getDockEntryOrderSnapshot() : getDefaultDockEntryOrderSnapshot();
     let selectedTemplate: TEntryVisibilityTemplate | "current" = ENTRY_PROFILE_SIMPLE;
     const existing = profileID
         ? window.siyuan.config.appearance.entryVisibility.profiles.find((item) => item.id === profileID)
@@ -549,6 +568,7 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
     const view = createEntryView(root);
     const body = view.querySelector<HTMLElement>(".b3-dialog__body");
     body.innerHTML = `<div class="b3-dialog__content config-entry-visibility__content">
+    ${isMobile() ? '<div class="config-entry-visibility__mobile-header">' : ""}
     ${builtin ? "" : `<div class="config-group">
         <div class="config-title">${creating ? window.siyuan.languages.entryCreateProfile : escapeHtml(draft.name)}</div>
         <div class="config-items">
@@ -570,13 +590,18 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
     </div>`}
     <div class="config-group">
         ${builtin ? `<div class="config-title">${escapeHtml(draft.name)}</div>` : ""}
-        <div class="fn__flex">
-            <input class="b3-text-field fn__flex-1" data-type="entry-search" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">
+        <div class="fn__flex config-entry-visibility__search">
+            <input spellcheck="false" class="b3-text-field fn__flex-1" data-type="entry-search" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">
         </div>
     </div>
+    ${isMobile() ? `<div class="config-entry-visibility__mobile-controls">
+        <select class="b3-select" data-type="entry-section" aria-label="${escapeAttr(window.siyuan.languages.position)}"></select>
+        <div data-type="entry-mobile-options"></div>
+    </div></div>` : ""}
     <div class="config-entry-visibility__browser" data-type="entry-browser"></div>
 </div>
 <div class="b3-dialog__action">
+    ${builtin || !isMobile() ? "" : `<button class="b3-button b3-button--outline config-entry-visibility__reset-orders ariaLabel" data-action="reset-all-entry-orders" data-position="north" aria-label="${escapeAttr(window.siyuan.languages.entryResetAllOrders)}"><span class="fn__ellipsis">${window.siyuan.languages.entryResetAllOrders}</span></button><span class="fn__space fn__flex-1"></span>`}
     ${builtin ? `<button class="b3-button b3-button--text" data-action="cancel">${window.siyuan.languages.close}</button>` : `<button class="b3-button b3-button--cancel" data-action="cancel">${window.siyuan.languages.cancel}</button>
     <span class="fn__space"></span>
     <button class="b3-button b3-button--text" data-action="confirm">${window.siyuan.languages.confirm}</button>`}
@@ -624,6 +649,19 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
             resetEntryColumns = true;
             revealSelection = true;
         }
+        if (isMobile()) {
+            const sections = getVisibleEntryCatalog().filter(item => !filter || filter.visibleSectionKeys.has(item.key));
+            const section = sections.find(item => item.key === selectedSectionKey) || sections[0];
+            selectedSectionKey = section.key;
+            view.querySelector("[data-type='entry-section']").innerHTML = sections.map(item =>
+                `<option value="${escapeAttr(item.key)}"${item.key === section.key ? " selected" : ""}>${escapeHtml(item.label())}</option>`).join("");
+            const directRoot = getDirectDisplayRoot(section);
+            view.querySelector("[data-type='entry-mobile-options']").innerHTML = directRoot ? `
+                <label class="fn__flex b3-label config-item">
+                    <div class="fn__flex-1"><div class="config-name">${escapeHtml(directRoot.label())}</div></div>
+                    ${renderEntrySwitch(draft, `${section.key}.${directRoot.key}`, directRoot, true, builtin)}
+                </label>` : "";
+        }
         browser.innerHTML = renderEntryColumns(draft, selectedSectionKey, selectedPaths, builtin,
             filter?.visiblePaths, filter?.visibleSectionKeys, dockOrderSnapshot);
         previousQuery = query;
@@ -632,7 +670,7 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         columns.forEach((column, index) => {
             const list = column.querySelector<HTMLElement>(".config-entry-visibility__column-list");
             if (list) {
-                list.scrollTop = resetEntryColumns && index > 0 ? 0 : oldScrollTops[index] || 0;
+                list.scrollTop = resetEntryColumns && (isMobile() || index > 0) ? 0 : oldScrollTops[index] || 0;
                 if (revealSelection) {
                     const current = list.querySelector<HTMLElement>(
                         ".config-entry-visibility__location--current, .config-entry-visibility__row--current");
@@ -646,7 +684,10 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
             columnsContainer.scrollLeft = scrollToEnd ? columnsContainer.scrollWidth : oldScrollLeft;
         }
     };
-    const leaveEditor = () => removeEntryView(root, view);
+    const leaveEditor = () => {
+        disposeTouchOrder();
+        removeEntryView(root, view);
+    };
     const closeEditor = () => {
         if (JSON.stringify(draft) !== initialJSON) {
             confirmDialog(window.siyuan.languages.confirm, window.siyuan.languages.discardUnsavedChanges, leaveEditor);
@@ -656,37 +697,8 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
     };
     renderBrowser();
     searchInput.addEventListener("input", () => renderBrowser());
-    browser.addEventListener("click", event => {
-        const button = (event.target as Element).closest<HTMLElement>("[data-entry-move]");
-        if (!button) {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        if (builtin || searchInput.value.trim()) {
-            return;
-        }
-        const row = button.closest<HTMLElement>("[data-entry-row]");
-        const parent = row.dataset.entryParent;
-        const nodes = getEntryCatalogChildren(parent);
-        const order = getProfileEntryOrder(draft, parent, nodes);
-        const rows = Array.from(row.parentElement.querySelectorAll<HTMLElement>("[data-entry-row]"));
-        const after = button.dataset.entryMove === "down";
-        const target = rows[rows.indexOf(row) + (after ? 1 : -1)];
-        if (!target) {
-            return;
-        }
-        const updated = moveEntryOrder(order, row.dataset.entryKey, target.dataset.entryKey, after,
-            new Set(nodes.filter(item => item.type === "separator").map(item => item.key)));
-        if (updated) {
-            draft.orders ||= {};
-            draft.orders[parent] = mergeEntryOrderPreservingUnknown(nodes.map(item => item.key),
-                draft.orders[parent], updated, new Set(nodes.filter(item => item.type === "separator").map(item => item.key)));
-            renderBrowser();
-        }
-    });
     browser.addEventListener("dragstart", (event: DragEvent) => {
-        if (builtin || searchInput.value.trim()) {
+        if (isMobile() || builtin || searchInput.value.trim()) {
             event.preventDefault();
             return;
         }
@@ -701,13 +713,13 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("text/plain", row.dataset.entryKey);
     });
-    browser.addEventListener("dragover", (event: DragEvent) => {
+    const updateDropTarget = (target: Element, clientY: number) => {
         if (!dragging) {
             return;
         }
-        const row = (event.target as Element).closest<HTMLElement>("[data-entry-row]");
+        const row = target?.closest<HTMLElement>("[data-entry-row]");
         if (isDockOrderScope(dragging.parentPath)) {
-            const dropScopeElement = (event.target as Element).closest<HTMLElement>("[data-entry-drop-scope]");
+            const dropScopeElement = target?.closest<HTMLElement>("[data-entry-drop-scope]");
             const targetScopeValue = row?.dataset.entryParent || dropScopeElement?.dataset.entryDropScope || "";
             if (!isDockOrderScope(targetScopeValue)) {
                 clearDropTarget();
@@ -716,7 +728,7 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
             }
             const targetKey = row?.dataset.entryParent === targetScopeValue ? row.dataset.entryKey : undefined;
             const after = targetKey
-                ? event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2
+                ? clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2
                 : undefined;
             const movedOrder = moveDockEntryOrderSnapshot(
                 mergeDockEntryOrderSnapshot(dockOrderSnapshot, draft.orders),
@@ -730,8 +742,6 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
             if (!movedOrder) {
                 return;
             }
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
             if (targetKey) {
                 row.classList.add(`config-entry-visibility__row--drop-${after ? "after" : "before"}`);
             } else {
@@ -753,7 +763,7 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
             context.defaultOrder,
             context.separatorKeys,
         );
-        const after = event.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+        const after = clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
         const movedOrder = moveEntryOrder(order, dragging.sourceKey, row.dataset.entryKey, after,
             context.separatorKeys);
         clearDropTarget();
@@ -761,16 +771,13 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         if (!movedOrder) {
             return;
         }
-        event.preventDefault();
-        event.dataTransfer.dropEffect = "move";
         row.classList.add(`config-entry-visibility__row--drop-${after ? "after" : "before"}`);
-    });
-    browser.addEventListener("drop", (event: DragEvent) => {
+    };
+    const saveDrop = () => {
         if (dragging && isDockOrderScope(dragging.parentPath)) {
             if (!dragging.dockOrder) {
                 return;
             }
-            event.preventDefault();
             draft.orders ||= {};
             DOCK_ORDER_SCOPES.forEach((scope) => {
                 draft.orders[scope] = [...dragging.dockOrder[scope]];
@@ -782,7 +789,6 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         if (!dragging?.defaultOrder || !dragging.order) {
             return;
         }
-        event.preventDefault();
         draft.orders ||= {};
         const savedOrder = draft.orders[dragging.parentPath];
         const context = getEntryOrderContext(dragging.parentPath, dockOrderSnapshot);
@@ -799,13 +805,42 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         );
         dragging = undefined;
         renderBrowser();
-    });
-    browser.addEventListener("dragend", () => {
+    };
+    const cancelDrag = () => {
         dragging = undefined;
         clearDropTarget();
         browser.querySelector(".config-entry-visibility__row--dragging")?.classList.remove(
             "config-entry-visibility__row--dragging");
+    };
+    browser.addEventListener("dragover", (event: DragEvent) => {
+        updateDropTarget(event.target as Element, event.clientY);
+        if (dragging?.order || dragging?.dockOrder) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+        }
     });
+    browser.addEventListener("drop", (event: DragEvent) => {
+        event.preventDefault();
+        saveDrop();
+        cancelDrag();
+    });
+    browser.addEventListener("dragend", cancelDrag);
+    const disposeTouchOrder = isMobile() ? bindTouchOrder(browser, {
+        start: (row) => {
+            if (builtin || searchInput.value.trim() || !row.dataset.entryParent || !row.dataset.entryKey) {
+                return false;
+            }
+            dragging = {parentPath: row.dataset.entryParent, sourceKey: row.dataset.entryKey};
+            row.classList.add("config-entry-visibility__row--dragging");
+            return true;
+        },
+        move: updateDropTarget,
+        drop: () => {
+            saveDrop();
+            cancelDrag();
+        },
+        cancel: cancelDrag,
+    }) : () => {};
     view.addEventListener("input", (event) => {
         if (builtin) {
             return;
@@ -816,6 +851,13 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         }
     });
     view.addEventListener("change", (event) => {
+        const control = event.target as HTMLInputElement | HTMLSelectElement;
+        if (control.dataset.type === "entry-section") {
+            selectedSectionKey = control.value;
+            selectedPaths = [];
+            renderBrowser(false, true);
+            return;
+        }
         if (builtin) {
             return;
         }
@@ -855,7 +897,11 @@ const openProfileEditor = (root: HTMLElement, profileID?: string) => {
         }
         const actionElement = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
         const action = actionElement?.dataset.action;
-        if (action === "back" || action === "cancel") {
+        if (!builtin && (action === "reset-entry-order" || action === "reset-all-entry-orders")) {
+            cancelDrag();
+            resetEntryProfileOrder(draft, action === "reset-entry-order" ? actionElement.dataset.entryParent : undefined);
+            renderBrowser();
+        } else if (action === "back" || action === "cancel") {
             closeEditor();
         } else if (action === "select-entry-section") {
             selectedSectionKey = actionElement.dataset.entrySection;

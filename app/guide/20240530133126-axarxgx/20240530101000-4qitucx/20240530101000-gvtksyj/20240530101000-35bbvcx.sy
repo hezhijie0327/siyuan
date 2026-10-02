@@ -7,7 +7,7 @@
 		"id": "20240530101000-35bbvcx",
 		"title": "コンテンツブロックの種類",
 		"type": "doc",
-		"updated": "20260906220233"
+		"updated": "20261002002136"
 	},
 	"Children": [
 		{
@@ -17,7 +17,7 @@
 			"Properties": {
 				"ID": "20240530101000-6nam42g",
 				"id": "20240530101000-n0tipvh",
-				"updated": "20260906003609"
+				"updated": "20260921215916"
 			},
 			"Children": [
 				{
@@ -73,7 +73,7 @@
 			"Properties": {
 				"colgroup": "||",
 				"id": "20240530101000-7ed5u6l",
-				"updated": "20260906003609"
+				"updated": "20260923221935"
 			},
 			"Children": [
 				{
@@ -956,6 +956,75 @@
 										},
 										{
 											"Type": "NodeLinkText",
+											"Data": "mindmap-list"
+										},
+										{
+											"Type": "NodeCloseBracket"
+										},
+										{
+											"Type": "NodeOpenParen"
+										},
+										{
+											"Type": "NodeLinkDest",
+											"Data": "assets/mindmap-list-20260921215248-e039c4.svg"
+										},
+										{
+											"Type": "NodeCloseParen"
+										}
+									]
+								},
+								{
+									"Type": "NodeText",
+									"Data": "​"
+								}
+							]
+						},
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "マインドマップブロック"
+								}
+							]
+						},
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "コンテナブロック"
+								}
+							]
+						}
+					]
+				},
+				{
+					"Type": "NodeTableRow",
+					"Data": "tr",
+					"Children": [
+						{
+							"Type": "NodeTableCell",
+							"Data": "td",
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "​​"
+								},
+								{
+									"Type": "NodeImage",
+									"Data": "span",
+									"Children": [
+										{
+											"Type": "NodeBang"
+										},
+										{
+											"Type": "NodeOpenBracket"
+										},
+										{
+											"Type": "NodeLinkText",
 											"Data": "list-item"
 										},
 										{
@@ -1422,7 +1491,7 @@
 			"Properties": {
 				"ID": "20240530101000-rjjxxn8",
 				"id": "20240530101000-p035stn",
-				"updated": "20260906220233"
+				"updated": "20261002002136"
 			},
 			"Children": [
 				{
@@ -2625,6 +2694,256 @@
 			]
 		},
 		{
+			"ID": "20260921215916-odykie5",
+			"Type": "NodeHeading",
+			"HeadingLevel": 3,
+			"Properties": {
+				"id": "20260921215916-odykie5",
+				"updated": "20261002002136"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "マインドマップブロック"
+				}
+			]
+		},
+		{
+			"ID": "20260921215248-kduw3ym",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260921215248-kduw3ym",
+				"updated": "20260923221935"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "マインドマップブロックは独立したブロックタイプです。箇条書き、番号付きリスト、タスクリストから変換でき、リストに戻すこともできます。変換時には項目の内容、番号、タスクの状態が保持されます。リストとして保存された以前のマインドマップは、文書を編集用に開いたときに更新されます。"
+				}
+			]
+		},
+		{
+			"ID": "20260930234403-3zow3ge",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260930234403-3zow3ge",
+				"updated": "20260930234403"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "ノードの編集中に "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "/"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " を入力して「画像やファイルを挿入」を選択すると、ローカル画像をアップロードできます。クリップボードの画像を貼り付けることもできます。画像は文書の添付ファイルとして保存されます。複数の最上位ノードに対して表示される仮想中心のタイトルはプレーンテキストのままです。"
+				}
+			]
+		},
+		{
+			"ID": "20261001015635-vr2ykf2",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001015635-vr2ykf2",
+				"updated": "20261001015635"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "関連線を選択し、下部の設定にある "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "矢印の方向"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " で "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "順方向の矢印"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "（始点から終点、既定）、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "逆方向の矢印"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "（終点から始点）、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "両端に矢印"
+				},
+				{
+					"Type": "NodeText",
+					"Data": "、"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "矢印なし"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " を選択できます。方向を変更しても接続先のノード、ラベル、手動の経路は保持され、元に戻す・やり直しに対応しています。親子ノード間の線には影響しません。"
+				}
+			]
+		},
+		{
+			"ID": "20261001015635-wnnepvh",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001015635-wnnepvh",
+				"updated": "20261001051950"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "関連線を選択すると、矢印の方向にかかわらず、白抜きの円は接続の始点、塗りつぶした円は終点を示します。円形のハンドルを元のノードの四辺に沿ってドラッグすると、接続位置を連続的に調整できます。接続可能な別のノードにドラッグすると、接続先が変わります。マウスとタッチ操作に対応し、離すと元に戻せる一回の変更として保存されます。空白、無効な対象、反対側の端点のノード、既存の同方向の接続にドロップすると変更は取り消されます。ノードや操作ボタンを避けられない位置も保存されません。接続位置は調整するまで自動で選択され、調整後はノードの文字サイズやレイアウトの変化に追従します。"
+				}
+			]
+		},
+		{
+			"ID": "20261001051950-1qxr826",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001051950-1qxr826",
+				"updated": "20261001051950"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "関連線の下部設定で "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "接続位置を自動に戻す"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " を選ぶと、手動で調整した中間経路を保持したまま、両端の接続位置を自動に戻せます。線分のハンドルをダブルクリックすると、中間経路だけが自動に戻り、接続位置の設定は保持されます。ラベル、スタイル、矢印の方向は変わりません。"
+				}
+			]
+		},
+		{
+			"ID": "20261001051950-6lon1fd",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001051950-6lon1fd",
+				"updated": "20261001051950"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "レイアウトの変化で保存済みの手動経路を使えなくなった場合は、指定した接続位置を保持し、一時的に自動経路を使用します。指定した接続位置も使えない場合に限り、自動の接続位置を一時的に使用します。どの設定を使用できないかは通知で確認できます。保存済みの設定は削除されず、レイアウトが対応すれば再び使用されます。読み取り専用表示とエクスポートでも同じ描画規則を使い、調整ハンドルは表示しません。読み取り専用表示でも自動への切り替え通知を表示します。"
+				}
+			]
+		},
+		{
+			"ID": "20261001015635-ganogsj",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001015635-ganogsj",
+				"updated": "20261002002136"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "外枠にマウスカーソルを合わせると、枠の外側に小さなサイズ変更ハンドルが表示されます。右側中央のハンドルで幅、下側中央のハンドルで高さ、右下の丸い角のハンドルで両方を変更できます。タッチ操作ではハンドルを直接ドラッグします。文書内のブロックのサイズが変わり、キャンバスのズーム倍率は変わりません。指を離すと元に戻せる一回の変更として保存されます。"
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "Esc"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " を押すかタッチ操作をキャンセルすると元のサイズに戻ります。ブロックメニューの幅と高さの設定も引き続き使用できます。"
+				}
+			]
+		},
+		{
+			"ID": "20261001015635-v3ggg2j",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20261001015635-v3ggg2j",
+				"updated": "20261001015635"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "読み取り専用、表示ロック、全画面表示ではサイズ変更ハンドルは表示されません。スーパーブロックの直下にあるマインドマップでは下端の高さハンドルのみ表示され、幅はスーパーブロックの列の区切りで変更します。"
+				}
+			]
+		},
+		{
+			"ID": "20260926151827-vknoaqd",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260926151827-vknoaqd",
+				"updated": "20260926152549"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "範囲の最初のノードを選択し、マインドマップのツールバーで "
+				},
+				{
+					"Type": "NodeTextMark",
+					"TextMarkType": "kbd",
+					"TextMarkTextContent": "要約"
+				},
+				{
+					"Type": "NodeText",
+					"Data": " をクリックしてから、同じ親を持つ末端のノードを選択すると、角括弧と要約テキストを追加できます。範囲は連続している必要があり、既存の要約と重複したり、入れ子にしたりすることはできません。モバイルでも同じ手順で操作できます。範囲の選択中は上下の矢印キーで末端のノードを選び、Enter で範囲を確定し、Esc でキャンセルすることもできます。"
+				}
+			]
+		},
+		{
+			"ID": "20260926151827-l7l2w92",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260926151827-l7l2w92",
+				"updated": "20260926151827"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "要約テキストをダブルクリックするか、要約を選択して下部の編集ボタンを押すと、テキストを編集できます。Enter で保存し、Esc でキャンセルします。下部のツールバーで色の変更や削除ができ、Delete でも選択中の要約を削除できます。これらの操作は元に戻す・やり直しに対応しています。"
+				}
+			]
+		},
+		{
+			"ID": "20260926151827-fuc3d23",
+			"Type": "NodeParagraph",
+			"Properties": {
+				"id": "20260926151827-fuc3d23",
+				"updated": "20260926151827"
+			},
+			"Children": [
+				{
+					"Type": "NodeText",
+					"Data": "リストに変換すると要約は非表示になりますが、データは保持され、マインドマップに戻すと再表示されます。範囲内に挿入したノードは自動的に含まれます。ノードを削除したり範囲外に移動したりすると範囲が縮まり、1 つ残っていれば要約を保持し、すべて削除すると要約も削除します。要約テキストは注釈であり、個別に検索や参照ができる本文ブロックではありません。SiYuan 形式の HTML と PDF プレビューには要約が表示されます。"
+				}
+			]
+		},
+		{
 			"ID": "20240530101000-y5kx7kx",
 			"Type": "NodeHeading",
 			"HeadingLevel": 3,
@@ -3028,7 +3347,7 @@
 			"HeadingLevel": 3,
 			"Properties": {
 				"id": "20240530101000-cb0jgj8",
-				"updated": "20250330192732"
+				"updated": "20260928225427"
 			},
 			"Children": [
 				{
@@ -3084,6 +3403,178 @@
 					"Properties": {
 						"id": ""
 					}
+				}
+			]
+		},
+		{
+			"ID": "20260928225427-067f59x",
+			"Type": "NodeList",
+			"ListData": {},
+			"Properties": {
+				"id": "20260928225427-067f59x",
+				"updated": "20260928225427"
+			},
+			"Children": [
+				{
+					"ID": "20260928225427-hbgeetu",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-hbgeetu",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-e9kqvn5",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-e9kqvn5",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "/"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " を入力し、"
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "横向きスーパーブロック"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " または "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "縦向きスーパーブロック"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " を選ぶと、空の段落を左右または上下に２つ配置し、最初の段落から入力できます。「columns」で検索しても見つかります。モバイルではキーボードツールバーの挿入パネルからも選べます"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20260928225427-yj8hs5v",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-yj8hs5v",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-o90dbbh",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-o90dbbh",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "スーパーブロックのブロックアイコンメニューで "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "スーパーブロック"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "現在のスーパーブロックの先頭に列を追加"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " または "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "スーパーブロック"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " - "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "現在のスーパーブロックの末尾に列を追加"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " を選ぶと、横向きレイアウトの先頭または末尾に空の段落を追加できます。縦向きレイアウトでは対応する操作でブロックを追加します。既存の子ブロックの種類や内容は複製しません"
+								}
+							]
+						}
+					]
+				},
+				{
+					"ID": "20260928225427-szdbffm",
+					"Type": "NodeListItem",
+					"ListData": {
+						"BulletChar": 42,
+						"Marker": "Kg=="
+					},
+					"Properties": {
+						"id": "20260928225427-szdbffm",
+						"updated": "20260928225427"
+					},
+					"Children": [
+						{
+							"ID": "20260928225427-ddjfwhu",
+							"Type": "NodeParagraph",
+							"Properties": {
+								"id": "20260928225427-ddjfwhu",
+								"updated": "20260928225427"
+							},
+							"Children": [
+								{
+									"Type": "NodeText",
+									"Data": "縦向きスーパーブロックの直下の子ブロックのメニューで "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "左側に局所的な段組みを作成"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " または "
+								},
+								{
+									"Type": "NodeTextMark",
+									"TextMarkType": "kbd",
+									"TextMarkTextContent": "右側に局所的な段組みを作成"
+								},
+								{
+									"Type": "NodeText",
+									"Data": " を選ぶと、そのブロックと新しい空の段落を内側の横向きスーパーブロックにまとめます。他のブロックの配置は維持され、既存の左右への列挿入ショートカットの対象範囲も変わりません"
+								}
+							]
+						}
+					]
 				}
 			]
 		},

@@ -1,7 +1,10 @@
+import type {BlockQueryRequestInput} from "../../types/api";
 import {Constants} from "../../constants";
 import {hideElements} from "../ui/hideElements";
 import {fetchPost} from "../../util/fetch";
 import {processRender} from "./processCode";
+import {migrateLegacyMindmapsBeforeRender} from "../render/listMindmap/migrate";
+import {resolveVisibleListMindmapBlock} from "../render/listMindmap/render";
 import {highlightRender} from "../render/highlightRender";
 import {blockRender} from "../render/blockRender";
 import {revealTabsForTarget} from "../render/tabsRender";
@@ -17,6 +20,7 @@ import {isMobile} from "../../util/functions";
 import {foldPassiveType} from "../wysiwyg/renderBacklink";
 import {showMessage} from "../../dialog/message";
 import {avRender} from "../render/av/render";
+import {refreshCalendarReadonly} from "../render/av/calendar/render";
 import {hideTooltip} from "../../dialog/tooltip";
 import {stickyRow} from "../render/av/row";
 import {getContenteditableElement} from "../wysiwyg/getBlock";
@@ -33,11 +37,13 @@ import {getEmbeddedDocInfoResponse} from "./docInfo";
 import {updateWidgetCacheVersion} from "./widgetCache";
 import {normalizeHTMLAssetIFrameSources} from "../../asset/html";
 import {getSavedTabFocusTarget, hasFocusOffsets} from "./focusRestore";
-import {isIPhone, isPhablet} from "./compatibility";
+import {isAndroid, isIPhone, isPhablet} from "./compatibility";
 import {forEachPluginSubscriber} from "../../plugin/EventBusCore";
 import {disposeCustomBlocksInElement, setCustomBlockRootReady} from "../../plugin/customBlockRender";
 import {invalidateTrackedRanges, invalidateTrackedRangesInElement} from "./trackedRange";
 import {areProtylePluginExtensionsEnabled} from "../runtimeCapabilities";
+import {recordRestoredSpellcheckFocus} from "./spellcheckFocus";
+import {applyPublishFoldStates} from "./viewFold";
 /// #if MOBILE
 import {updateMobileTitleReadonly} from "./setEditMode";
 /// #endif
@@ -50,6 +56,7 @@ export const onGet = (options: {
     updateReadonly?: boolean,
     scrollPosition?: ScrollLogicalPosition,
     afterCB?: () => void,
+    afterAVRender?: () => void | Promise<void>,
     dataDocType?: string,
     isValid?: () => boolean,
     focusAfterZoom?: boolean,
@@ -150,6 +157,8 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            afterAVRender: options.afterAVRender,
+            isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
             suppressFocus: options.suppressFocus,
@@ -169,6 +178,8 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            afterAVRender: options.afterAVRender,
+            isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
             suppressFocus: options.suppressFocus,
@@ -201,6 +212,8 @@ export const onGet = (options: {
             isSyncing: options.data.data.isSyncing,
             refreshHeadingNumbers,
             afterCB: options.afterCB,
+            afterAVRender: options.afterAVRender,
+            isValid: options.isValid,
             scrollPosition: options.scrollPosition,
             focusAfterZoom: options.focusAfterZoom,
             suppressFocus: options.suppressFocus,
@@ -213,7 +226,7 @@ export const onGet = (options: {
         return;
     }
 
-    const docInfoParam: IObject = {
+    const docInfoParam: BlockQueryRequestInput = {
         id: options.protyle.block.rootID
     };
     if (isEncryptedBox(options.protyle.notebookId)) {
@@ -233,9 +246,19 @@ const setHTML = (options: {
     scrollPosition?: ScrollLogicalPosition,
     refreshHeadingNumbers?: boolean,
     afterCB?: () => void,
+    afterAVRender?: () => void | Promise<void>,
     focusAfterZoom?: boolean,
     suppressFocus?: boolean,
+    isValid?: () => boolean,
 }, protyle: IProtyle) => {
+    if (options.isValid && !options.isValid()) {
+        return;
+    }
+    if (!options.isSyncing && migrateLegacyMindmapsBeforeRender(protyle, options.content, options.action || [], content => {
+        setHTML({...options, content}, protyle);
+    })) {
+        return;
+    }
     if (protyle.contentElement.classList.contains("fn__none") && protyle.wysiwyg.element.innerHTML !== "") {
         return;
     }
@@ -252,7 +275,7 @@ const setHTML = (options: {
     });
     normalizeHTMLAssetIFrameSources(doc);
     updateWidgetCacheVersion(doc, Constants.SIYUAN_VERSION);
-    protyle.wysiwyg.prepareLargeListVirtualization(
+    protyle.wysiwyg.prepareBlockVirtualization(
         doc.body,
         !options.action.includes(Constants.CB_GET_APPEND) && !options.action.includes(Constants.CB_GET_BEFORE)
     );
@@ -331,6 +354,7 @@ const setHTML = (options: {
         }
     }
 
+    void applyPublishFoldStates(protyle);
     if (options.eof) {
         const eofElement = options.action.includes(Constants.CB_GET_BEFORE) ?
             protyle.wysiwyg.element.firstElementChild : protyle.wysiwyg.element.lastElementChild;
@@ -363,7 +387,14 @@ const setHTML = (options: {
     }
     processRender(protyle.wysiwyg.element);
     highlightRender(protyle.wysiwyg.element);
-    avRender(protyle.wysiwyg.element, protyle);
+    const avRendering = avRender(protyle.wysiwyg.element, protyle);
+    if (options.afterAVRender) {
+        void avRendering.then(() => {
+            if (!options.isValid || options.isValid()) {
+                return options.afterAVRender();
+            }
+        }).catch(error => console.error(error));
+    }
     blockRender(protyle, protyle.wysiwyg.element);
     renderHeadingNumbers(protyle);
     if (options.refreshHeadingNumbers) {
@@ -498,9 +529,11 @@ export const disabledForeverProtyle = (protyle: IProtyle) => {
 
 /** 禁用编辑器 */
 export const disabledProtyle = (protyle: IProtyle) => {
+    const wasDisabled = protyle.disabled;
     window.siyuan.menus.menu.remove();
     hideElements(["gutter", "toolbar", "select", "hint", "util"], protyle);
     protyle.disabled = true;
+    protyle.databaseAttributePanel?.updateReadonly();
     if (protyle.title && protyle.title.editElement) {
         protyle.title.editElement.setAttribute("contenteditable", "false");
         protyle.title.editElement.style.userSelect = "text";
@@ -512,6 +545,9 @@ export const disabledProtyle = (protyle: IProtyle) => {
         protyle.background.element.classList.remove("protyle-background--enable");
     }
     disabledWYSIWYG(protyle.wysiwyg.element);
+    if (!wasDisabled) {
+        refreshCalendarReadonly(protyle);
+    }
     if (protyle.breadcrumb) {
         const readonlyButton = protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]');
         readonlyButton.querySelector("use").setAttribute("xlink:href", "#iconLock");
@@ -533,13 +569,16 @@ export const enableProtyle = (protyle: IProtyle) => {
     if (protyle.element.getAttribute("disabled-forever") === "true") {
         return;
     }
+    const wasDisabled = protyle.disabled;
     protyle.disabled = false;
+    protyle.databaseAttributePanel?.updateReadonly();
     if (isMobile()) {
         /// #if MOBILE
         updateMobileTitleReadonly(protyle);
         /// #endif
     }
-    protyle.wysiwyg.element.setAttribute("contenteditable", isIPhone() ? "false" : "true");
+    // 解除只读时保留 Android 和 iPhone 的正文编辑边界，结构容器保持不可编辑。
+    protyle.wysiwyg.element.setAttribute("contenteditable", (isIPhone() || isAndroid()) ? "false" : "true");
     protyle.wysiwyg.element.style.userSelect = "";
     // 用于区分移动端样式
     protyle.wysiwyg.element.setAttribute("data-readonly", "false");
@@ -566,6 +605,9 @@ export const enableProtyle = (protyle: IProtyle) => {
     protyle.wysiwyg.element.querySelectorAll(".av").forEach((item: HTMLElement) => {
         stickyRow(item, protyle.contentElement, "all");
     });
+    if (wasDisabled) {
+        refreshCalendarReadonly(protyle);
+    }
     if (protyle.breadcrumb) {
         const readonlyButton = protyle.breadcrumb.element.parentElement.querySelector('[data-type="readonly"]');
         readonlyButton.querySelector("use").setAttribute("xlink:href", "#iconUnlock");
@@ -606,6 +648,41 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     } else if (!focusElement || action.includes(Constants.CB_GET_FOCUSFIRST)) {
         focusElement = protyle.wysiwyg.element.firstElementChild;
     }
+    const visibleMindmap = resolveVisibleListMindmapBlock(focusElement);
+    if (visibleMindmap !== undefined) {
+        protyle.observerLoad?.disconnect();
+        if (!visibleMindmap) {
+            return;
+        }
+        if (action.includes(Constants.CB_GET_HL)) {
+            preventScroll(protyle);
+            bgFade(visibleMindmap.carrier);
+        }
+        if (!suppressFocus && (action.includes(Constants.CB_GET_FOCUS) || action.includes(Constants.CB_GET_FOCUSFIRST))) {
+            setTimeout(() => {
+                visibleMindmap.focus();
+                /// #if !MOBILE
+                if (!action.includes(Constants.CB_GET_UNUNDO)) {
+                    const editable = getContenteditableElement(focusElement);
+                    if (editable) {
+                        const range = document.createRange();
+                        range.selectNodeContents(editable);
+                        range.collapse(true);
+                        pushBack(protyle, range, focusElement);
+                    }
+                }
+                /// #endif
+            }, 0);
+        }
+        if (scrollAttr && typeof scrollAttr.scrollTop === "number") {
+            protyle.contentElement.scrollTop = scrollAttr.scrollTop;
+        } else if (action.includes(Constants.CB_GET_FOCUS) || action.includes(Constants.CB_GET_SCROLL) ||
+            action.includes(Constants.CB_GET_HL) || action.includes(Constants.CB_GET_FOCUSFIRST)) {
+            scrollCenter(protyle, visibleMindmap.scrollElement, scrollPosition);
+        }
+        visibleMindmap.reveal();
+        return;
+    }
     const hasScrollTop = scrollAttr && typeof scrollAttr.scrollTop === "number";
     const savedFocusElement = focusElement;
     if (hasScrollTop && scrollAttr.focusId && !action.includes(Constants.CB_GET_HL)) {
@@ -617,6 +694,7 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     }
     if (!suppressFocus && (action.includes(Constants.CB_GET_FOCUS) || action.includes(Constants.CB_GET_FOCUSFIRST))) {
         setTimeout(() => {
+            const previousActiveElement = protyle.wysiwyg.element.ownerDocument.activeElement;
             let range: Range;
             if (savedFocusElement === focusElement && hasFocusOffsets(scrollAttr)) {
                 range = focusByOffset(focusElement, scrollAttr.focusStart, scrollAttr.focusEnd) as Range;
@@ -624,6 +702,7 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
                 range = focusBlock(focusElement, undefined, !action.includes(Constants.CB_GET_OUTLINE),
                     focusAfterZoom) as Range;
             }
+            recordRestoredSpellcheckFocus(protyle.wysiwyg.element, previousActiveElement);
             /// #if !MOBILE
             if (!action.includes(Constants.CB_GET_UNUNDO)) {
                 pushBack(protyle, range, focusElement);
@@ -660,32 +739,37 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
         return;
     }
     // 加强定位
-    // 使用 AbortController 监听用户手势（滚轮/触摸/方向键），一旦用户主动滚动即停止强制定位，否则顶部为数据库等异步渲染块撑高内容时会反复重置滚动位置
-    const userScrollAbort = new AbortController();
-    const onUserScroll = () => userScrollAbort.abort();
-    protyle.contentElement.addEventListener("wheel", onUserScroll, {
+    // 使用 AbortController 监听用户滚动或编辑，停止后续布局变化引起的重复定位
+    const positioningAbort = new AbortController();
+    const cancelPositioning = () => positioningAbort.abort();
+    protyle.contentElement.addEventListener("wheel", cancelPositioning, {
         capture: true,
         passive: true,
-        signal: userScrollAbort.signal
+        signal: positioningAbort.signal
     });
-    protyle.contentElement.addEventListener("touchstart", onUserScroll, {
+    protyle.contentElement.addEventListener("touchstart", cancelPositioning, {
         capture: true,
         passive: true,
-        signal: userScrollAbort.signal
+        signal: positioningAbort.signal
     });
-    protyle.contentElement.addEventListener("touchmove", onUserScroll, {
+    protyle.contentElement.addEventListener("touchmove", cancelPositioning, {
         capture: true,
         passive: true,
-        signal: userScrollAbort.signal
+        signal: positioningAbort.signal
+    });
+    // 开始编辑后停止自动定位，避免输入引起的布局变化把可见光标重新滚到视口顶部
+    protyle.element.addEventListener("beforeinput", cancelPositioning, {
+        capture: true,
+        signal: positioningAbort.signal
     });
     protyle.contentElement.addEventListener("keydown", (event: KeyboardEvent) => {
         // 仅拦截会触发滚动的按键，避免影响正常编辑输入
         if (["PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", " "].includes(event.key)) {
-            userScrollAbort.abort();
+            positioningAbort.abort();
         }
-    }, {capture: true, signal: userScrollAbort.signal});
+    }, {capture: true, signal: positioningAbort.signal});
     protyle.observerLoad = new ResizeObserver(() => {
-        if (userScrollAbort.signal.aborted) {
+        if (positioningAbort.signal.aborted) {
             // 用户已主动滚动，停止强制定位并将滚动权交还给用户
             protyle.observerLoad.disconnect();
             protyle.observer.observe(protyle.wysiwyg.element);
@@ -704,13 +788,13 @@ const focusElementById = (protyle: IProtyle, action: string[], scrollAttr?: IScr
     protyle.observer.unobserve(protyle.wysiwyg.element);
     setTimeout(() => {
         protyle.observerLoad.disconnect();
-        userScrollAbort.abort();
+        positioningAbort.abort();
         protyle.observer.observe(protyle.wysiwyg.element);
     }, 1000 * 3);
 
     if (focusElement === protyle.wysiwyg.element.firstElementChild && !hasScrollTop) {
         protyle.observerLoad.disconnect();
-        userScrollAbort.abort();
+        positioningAbort.abort();
     }
 };
 

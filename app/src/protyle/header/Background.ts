@@ -11,6 +11,7 @@ import {openGlobalSearch} from "../../search/util";
 import {popSearch} from "../../mobile/menu/search";
 /// #endif
 import {Dialog} from "../../dialog";
+import {openInputDialog} from "../../dialog/inputDialog";
 import {Constants} from "../../constants";
 import {assetMenu} from "../../menus/protyle";
 import {previewImages} from "../preview/image";
@@ -354,25 +355,28 @@ export class Background {
                         };
 
                         let activeCategory = "all";
-
-                        const renderContent = (): void => {
-                            const bodyEl = dialog.element.querySelector(".b3-dialog__body");
-                            if (bodyEl) {
-                                bodyEl.innerHTML = `${buildTabs(activeCategory)}
-        <div class="b3-cards b3-cover__cards" style="padding:16px">${buildCards(activeCategory)}</div>`;
-                            }
-                        };
-
-                        renderContent();
+                        const bodyEl = dialog.element.querySelector(".b3-dialog__body") as HTMLElement;
+                        bodyEl.innerHTML = `<div class="b3-cover">
+    ${buildTabs(activeCategory)}
+    <div class="b3-cards b3-cover__cards">${buildCards(activeCategory)}</div>
+</div>`;
+                        const tabsEl = bodyEl.querySelector(".b3-cover__tabs") as HTMLElement;
+                        const cardsEl = bodyEl.querySelector(".b3-cover__cards") as HTMLElement;
 
                         // 点击事件委托
-                        dialog.element.querySelector(".b3-dialog__body")!.addEventListener("click", (event) => {
+                        bodyEl.addEventListener("click", (event) => {
                             const target = event.target as HTMLElement;
-                            const chip = target.closest(".b3-chip") as HTMLElement;
-                            if (chip && chip.hasAttribute("data-category")) {
-                                activeCategory = chip.getAttribute("data-category") || "all";
-                                renderContent();
-                                dialog.element.querySelector(".b3-dialog__body")!.scrollTop = 0;
+                            const chip = target.closest<HTMLElement>(".b3-chip[data-category]");
+                            if (chip && tabsEl.contains(chip)) {
+                                const category = chip.dataset.category || "all";
+                                if (category === activeCategory) {
+                                    return;
+                                }
+                                tabsEl.querySelector(".b3-chip--current")?.classList.remove("b3-chip--current");
+                                chip.classList.add("b3-chip--current");
+                                activeCategory = category;
+                                cardsEl.innerHTML = buildCards(activeCategory);
+                                cardsEl.scrollTop = 0;
                             } else if (target.closest(".b3-cover__card")) {
                                 const card = target.closest(".b3-cover__card") as HTMLElement;
                                 const name = card.getAttribute("data-name");
@@ -467,34 +471,22 @@ export class Background {
                     event.stopPropagation();
                     break;
                 } else if (type === "link" && !protyle.disabled) {
-                    const dialog = new Dialog({
+                    const dialog = openInputDialog({
                         title: window.siyuan.languages.link,
-                        width: isMobile() ? "92vw" : "520px",
-                        content: `<div class="b3-dialog__content">
-        <input class="b3-text-field fn__block" value="${this.imgElement.src.startsWith("data:") ? "" : this.imgElement.getAttribute("src")}">
-</div>
-<div class="b3-dialog__action">
-    <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
-    <button class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-</div>`,
+                        value: this.imgElement.src.startsWith("data:") ? "" : this.imgElement.getAttribute("src"),
+                        onConfirm: (value, dialog) => {
+                            const style = `background-image:url("${value}");`;
+                            this.ial["title-img"] = style;
+                            this.render(this.ial, protyle.block.rootID);
+                            fetchPost("/api/attr/setBlockAttrs", {
+                                id: protyle.block.rootID,
+                                attrs: {"title-img": this.ial["title-img"]}
+                            });
+                            dialog.destroy();
+                        },
                     });
                     dialog.element.setAttribute("data-key", Constants.DIALOG_BACKGROUNDLINK);
                     bindPopoverDialog(dialog, protyle.element);
-                    const btnsElement = dialog.element.querySelectorAll(".b3-button");
-                    btnsElement[0].addEventListener("click", () => {
-                        dialog.destroy();
-                    });
-                    btnsElement[1].addEventListener("click", () => {
-                        const style = `background-image:url("${dialog.element.querySelector("input").value}");`;
-                        this.ial["title-img"] = style;
-                        this.render(this.ial, protyle.block.rootID);
-                        fetchPost("/api/attr/setBlockAttrs", {
-                            id: protyle.block.rootID,
-                            attrs: {"title-img": this.ial["title-img"]}
-                        });
-                        dialog.destroy();
-                    });
-                    dialog.element.querySelector("input").focus();
                     event.preventDefault();
                     event.stopPropagation();
                     break;
@@ -837,6 +829,20 @@ export class Background {
 </div>`,
             bind: (element) => {
                 const listElement = element.querySelector(".b3-list--background");
+                const renderTagList = (html: string) => {
+                    if (!listElement.isConnected || !menu.element.contains(listElement)) {
+                        return;
+                    }
+                    listElement.innerHTML = html;
+                    const filterElement = listElement.parentElement;
+                    filterElement.style.maxHeight = "";
+                    // 异步列表更新后重新计算菜单高度，避免沿用加载占位的高度限制。
+                    window.siyuan.menus.menu.resetPosition();
+                    const maxHeight = (menu.element.lastElementChild as HTMLElement).style.maxHeight;
+                    if (maxHeight) {
+                        filterElement.style.maxHeight = `min(50vh, ${maxHeight})`;
+                    }
+                };
                 fetchPost("/api/search/searchTag", {
                     k: "",
                 }, (response) => {
@@ -851,8 +857,7 @@ export class Background {
     ${currentTags.includes(Lute.UnEscapeHTMLStr(item)) ? '<svg class="b3-menu__checked"><use xlink:href="#iconSelect"></use></svg>' : ""}
 </div>`;
                     });
-                    listElement.innerHTML = html;
-                    window.siyuan.menus.menu.resetPosition();
+                    renderTagList(html);
                 });
                 const inputElement = element.querySelector("input");
                 inputElement.addEventListener("keydown", (event: KeyboardEvent) => {
@@ -896,8 +901,7 @@ export class Background {
                         if (!hasKey && response.data.k) {
                             searchHTML = `<div data-type="new" class="b3-list-item b3-list-item--narrow${searchHTML ? "" : " b3-list-item--focus"}"><div class="fn__flex-1">${window.siyuan.languages.new} <mark>${escapeHtml(response.data.k)}</mark></div></div>` + searchHTML;
                         }
-                        listElement.innerHTML = searchHTML;
-                        window.siyuan.menus.menu.resetPosition();
+                        renderTagList(searchHTML);
                     });
                 });
                 listElement.addEventListener("click", (event) => {

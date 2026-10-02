@@ -2,9 +2,27 @@
 @use "toolbar" as *;
 @use "wysiwyg" as *;
 @use "attr" as *;
+@use "mindmap-view" as *;
+@use "block-resize" as *;
 
 .protyle-lite-fragment .protyle-action__menu {
   display: none;
+}
+
+.protyle-lite-fragment .protyle-action__copy {
+  border-radius: var(--b3-border-radius);
+}
+
+.table__cell-editor,
+.mindmap-view__editor {
+  .code-block .protyle-action__menu {
+    display: block;
+  }
+
+  .code-block .protyle-action__copy {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
 }
 
 .protyle-scroll {
@@ -356,14 +374,9 @@
       padding: 5px;
       width: 24px;
 
-      &:hover,
-      &:focus-visible {
+      &:hover {
         background-color: var(--b3-list-hover);
         color: var(--b3-theme-on-background);
-      }
-
-      &:focus-visible {
-        outline: 1px solid var(--b3-theme-primary);
       }
 
       svg {
@@ -417,14 +430,9 @@
     }
 
     &:hover,
-    &:focus-visible,
     &--active {
       color: var(--b3-theme-on-background);
       background-color: var(--b3-list-hover);
-    }
-
-    &:focus-visible {
-      outline: 1px solid var(--b3-theme-primary);
     }
   }
 }
@@ -539,6 +547,38 @@
 }
 
 .sy__backlink {
+  .backlinkList__source {
+    appearance: none;
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 28px;
+    border: 0;
+    border-radius: var(--b3-border-radius);
+    background-color: transparent;
+    color: var(--b3-theme-on-surface-light);
+    font: inherit;
+    font-size: 12px;
+    line-height: 20px;
+    text-align: start;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--b3-list-hover);
+      color: var(--b3-theme-on-background);
+    }
+
+    &:focus-visible {
+      outline: 1px solid var(--b3-theme-primary);
+      outline-offset: -1px;
+    }
+  }
+
   // 仅为上下文首块已有的属性栏留出空间，普通块保持紧凑。
   .protyle-wysiwyg > .protyle-breadcrumb__bar + [data-node-id]:is(
     [name]:not([name=""]),
@@ -586,11 +626,6 @@
     &:hover {
       background-color: var(--b3-list-hover);
       color: var(--b3-theme-on-background);
-    }
-
-    &:focus-visible {
-      outline: 1px solid var(--b3-theme-primary);
-      outline-offset: -1px;
     }
 
     svg {
@@ -916,6 +951,19 @@
   max-width: 100%;
 }
 
+.table__cell-rich .code-block,
+.table__cell-editor .code-block,
+.mindmap-view__content .code-block {
+  // 预览与编辑共用最小宽度，为代码内容和顶部操作区保留空间。
+  min-width: 200px;
+
+  .protyle-action__language {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .table__cell-rich {
   min-width: 0;
   min-height: 1.6em;
@@ -949,11 +997,18 @@
 
   .protyle-content {
     overflow: visible;
+
+    &[data-padding-mode="responsive"] {
+      // 单元格由内容参与列宽计算，不能隔离内部列表等块的固有宽度。
+      container-type: normal;
+    }
   }
 
   .protyle-wysiwyg {
     padding: 0 !important;
     min-height: 1.6em;
+    // 继承单元格字号，保持预览与编辑时的文字大小一致。
+    font-size: inherit;
   }
 }
 
@@ -992,7 +1047,76 @@
   min-width: 1px;
 }
 
+.table__cell-rich > .list[data-type="NodeList"],
+.table__cell-editor .protyle-wysiwyg > .list[data-type="NodeList"] {
+  // 首层列表按内容宽度整体对齐，内部保留左对齐，窄列中仍限制宽度以便换行。
+  margin-inline: var(--b3-table-cell-list-start, -8px) var(--b3-table-cell-list-end, 0);
+  width: fit-content;
+  max-width: calc(100% + var(--b3-table-cell-list-inset, 8px));
+  text-align: left;
+}
+
+.protyle-wysiwyg :is(td, th) {
+  // 普通左对齐抵消列表起始侧留白，居中和居右则使用单元格内容边界。
+  &[style*="text-align: center"] {
+    --b3-table-cell-list-start: auto;
+    --b3-table-cell-list-end: auto;
+    --b3-table-cell-list-inset: 0px;
+  }
+
+  &[style*="text-align: right"] {
+    --b3-table-cell-list-start: auto;
+    --b3-table-cell-list-end: 0;
+    --b3-table-cell-list-inset: 0px;
+  }
+}
+
+.table__cell-rich .li [data-table-cell-content],
+.table__cell-editor .protyle-wysiwyg .li [contenteditable="true"] {
+  // 列宽收缩时，列表缩进之外至少保留一个字符的空间。
+  min-width: 1em;
+}
+
+.table__cell-editor .protyle-wysiwyg [data-node-id] {
+  // 单元格的对齐方式优先于正文的两端对齐设置。
+  text-align: inherit;
+}
+
+.table__cell-rich > :is(.p, .h1, .h2, .h3, .h4, .h5, .h6)[data-table-cell-node],
+.table__cell-editor .protyle-wysiwyg > :is(.p, .h1, .h2, .h3, .h4, .h5, .h6) {
+  // 单元格已提供侧边留白，多段落和标题与普通文本使用相同的对齐边界。
+  padding-inline: 0;
+}
+
 .protyle-wysiwyg [data-type="NodeTable"] {
+  td.dragover__top,
+  td.dragover__bottom,
+  th.dragover__top,
+  th.dragover__bottom {
+    position: relative;
+
+    // 与空单元格的占位行分离，避免占位行高度覆盖插入线高度。
+    &::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background-color: var(--b3-theme-primary-lighter);
+      pointer-events: none;
+    }
+  }
+
+  td.dragover__top::before,
+  th.dragover__top::before {
+    top: -4px;
+  }
+
+  td.dragover__bottom::before,
+  th.dragover__bottom::before {
+    bottom: -4px;
+  }
+
   td[tabindex="-1"]:focus,
   th[tabindex="-1"]:focus {
     outline: none;
@@ -1137,8 +1261,7 @@ table + .protyle-action__table {
       transition: opacity 150ms linear;
     }
 
-    &:hover,
-    &:focus-visible {
+    &:hover {
       &::before {
         opacity: 0;
       }
@@ -1276,5 +1399,49 @@ table + .protyle-action__table {
     z-index: 3;
     background-color: var(--b3-theme-primary);
     pointer-events: none;
+  }
+}
+.image-ocr {
+  display: flex;
+  gap: 16px;
+  min-height: 0;
+
+  &__preview {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+
+    img {
+      max-width: 100%;
+    }
+  }
+
+  &__text {
+    flex: 1;
+    min-width: 0;
+    resize: none;
+  }
+
+  @media (max-width: 600px) {
+    flex-direction: column;
+
+    &__text {
+      min-height: 160px;
+    }
+  }
+}
+
+.img__name,
+.img__alt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  overflow-wrap: anywhere;
+  white-space: break-spaces;
+
+  > span {
+    flex: 1;
+    width: 0;
   }
 }

@@ -2,6 +2,7 @@ import {confirmDialog} from "../dialog/confirmDialog";
 import {Plugin} from "./index";
 import {hideMessage, showMessage} from "../dialog/message";
 import {Dialog} from "../dialog";
+import {openInputDialog} from "../dialog/inputDialog";
 import {fetchGet, fetchPost, fetchSyncPost} from "../util/fetch";
 import {getBackend, getFrontend} from "../util/functions";
 /// #if !MOBILE
@@ -25,7 +26,7 @@ import {getAllModels, getAllTabs} from "../layout/getAll";
 import {exportLayout} from "../layout/util";
 /// #endif
 import {getAllEditor} from "../layout/getAll";
-import {openSetting} from "../config";
+import {openPluginSetting} from "../config";
 import {openAttr, openFileAttr} from "../menus/commonMenuItem";
 import {globalCommand} from "../boot/globalEvent/command/global";
 import {saveScroll} from "../protyle/scroll/saveScroll";
@@ -34,6 +35,7 @@ import type {MobileFiles} from "../mobile/dock/MobileFiles";
 import type {Files} from "../layout/dock/Files";
 import {ProtyleMethod} from "./ProtyleMethod";
 import {openEmojiPanel} from "../emoji";
+import {openAssetPicker} from "../asset/picker";
 import {adjustEditorFontSize, setEditorFontSize} from "../util/editorFontSize";
 /// #if !MOBILE
 import {isDockPanelVisible, toggleDockPanel} from "../layout/dock/panel";
@@ -306,7 +308,7 @@ export const expandDocTree = async (options: {
         liElement = file.element.querySelector(`.b3-list[data-url="${options.id}"]`)?.firstElementChild as HTMLElement;
     } else {
         const response = await fetchSyncPost("/api/block/getBlockInfo", {id: options.id});
-        if (response.code === -1) {
+        if (response.code !== 0 || response.data.publishAccessRequired) {
             return;
         }
         notebookId = response.data.box;
@@ -416,6 +418,7 @@ const createAPI = () => ({
     ProtyleMethod,
     Plugin,
     Dialog,
+    openInputDialog,
     Menu,
     Setting,
     getAllEditor,
@@ -427,12 +430,13 @@ const createAPI = () => ({
     /// #endif
     getActiveEditor,
     platformUtils,
-    openSetting,
+    openSetting: openPluginSetting,
     openAttributePanel,
     saveLayout,
     globalCommand,
     expandDocTree,
     openEmoji,
+    openAssetPicker,
     toggleLeftDock,
     toggleRightDock,
     toggleBottomDock,

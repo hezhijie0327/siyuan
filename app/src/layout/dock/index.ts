@@ -1,5 +1,6 @@
 import {setStorageVal, updateHotkeyTip} from "../../protyle/util/compatibility";
 import {Layout} from "../index";
+import {isAbove} from "../../util/zIndex";
 import {Wnd} from "../Wnd";
 import {Tab} from "../Tab";
 import {Files} from "./Files";
@@ -30,6 +31,7 @@ import {
 import {getDockHotkey} from "./hotkey";
 import {resolveDockPanelVisibility} from "./panelVisibility";
 import {syncDockEntryOrders} from "../../config/entryVisibility/runtime";
+import {isWindow} from "../../util/functions";
 
 const TYPES = ["file", "outline", "inbox", "bookmark", "tag", "graph", "globalGraph", "backlink", "agentChat"];
 const DEFAULT_DOCK_SIZE = 232;
@@ -304,7 +306,7 @@ export class Dock {
                 documentSelf.onselectstart = null;
                 documentSelf.onselect = null;
                 this.setSize();
-                [...this.elements[0].querySelectorAll(".dock__item--active"), ...this.elements[0].querySelectorAll(".dock__item--active")].forEach(item => {
+                [...this.elements[0].querySelectorAll(".dock__item--active"), ...this.elements[1].querySelectorAll(".dock__item--active")].forEach(item => {
                     const customModel = this.data[item.getAttribute("data-type") as TDock];
                     if (customModel && customModel instanceof Custom && customModel.resize) {
                         customModel.resize();
@@ -464,7 +466,15 @@ export class Dock {
         }
         resizeTabs(false);
         setTabPosition(true);
+        if (resolution.visible) {
+            this.showDockAfterResponsiveLayout();
+        }
         return this.isPanelVisible();
+    }
+
+    private showDockAfterResponsiveLayout() {
+        // 响应式布局完成后展示主动打开的浮动面板。
+        requestAnimationFrame(() => this.showDock());
     }
 
     public togglePin() {
@@ -490,12 +500,16 @@ export class Dock {
             this.hideDock(true, preferredSize);
         } else {
             this.layout.element.style.transform = "";
+            this.layout.element.removeAttribute("data-temp");
             this.layout.element.style.zIndex = "";
             if (hasActive && this.panelVisible) {
                 this.resizeElement.classList.remove("fn__none");
             }
         }
         this.layout.element.classList.toggle("layout--float", this.isFloating());
+        if (this.isFloating() && this.layout.element.querySelector(".fullscreen")) {
+            this.showDock(true);
+        }
         if (!hasActive && !this.isFloating()) {
             this.layout.element.style[this.position === "Bottom" ? "height" : "width"] = "0px";
         }
@@ -600,6 +614,19 @@ export class Dock {
             this.layout.element.style.left = this.elements[0].clientWidth + "px";
             this.layout.element.style.right = this.elements[1].clientWidth + "px";
         }
+        // 全屏面板以窗口定位，浮动位移保留到退出全屏时恢复。
+        const fullscreenElement = this.layout.element.querySelector(".fullscreen");
+        if (fullscreenElement && fullscreenElement.clientHeight > 0) {
+            this.layout.element.setAttribute("data-temp", this.layout.element.style.transform);
+            this.layout.element.style.transform = "none";
+            // 窗口控制按钮保持在全屏浮动面板上方。
+            if (window.siyuan.config.system.os !== "darwin" && !isWindow()) {
+                const windowControlsElement = document.getElementById("windowControls");
+                if (windowControlsElement) {
+                    windowControlsElement.style.zIndex = (++window.siyuan.zIndex).toString();
+                }
+            }
+        }
     }
 
     public hideDock(reset = false, preferredSize?: number) {
@@ -621,9 +648,9 @@ export class Dock {
         const dialogElement = document.querySelector(".b3-dialog") as HTMLElement;
         const blockElement = document.querySelector(".block__popover") as HTMLElement;
         const menuElement = document.querySelector("#commonMenu:not(.fn__none)") as HTMLElement;
-        if (!reset && ((dialogElement && dialogElement.style.zIndex > this.layout.element.style.zIndex) ||  // 文档树上修改 emoji 时
-            (blockElement && blockElement.style.zIndex > this.layout.element.style.zIndex) ||  // 文档树上弹出悬浮层
-            (menuElement && menuElement.style.zIndex > this.layout.element.style.zIndex))  // 面板上弹出菜单时
+        if (!reset && ((dialogElement && isAbove(dialogElement, this.layout.element)) ||  // 文档树上修改 emoji 时
+            (blockElement && isAbove(blockElement, this.layout.element)) ||  // 文档树上弹出悬浮层
+            (menuElement && isAbove(menuElement, this.layout.element)))  // 面板上弹出菜单时
         ) {
             return;
         }
@@ -719,10 +746,12 @@ export class Dock {
                 clearTimeout(this.hideResizeTimeout);
                 this.hideDock();
             }
-            if ((type === "graph" || type === "globalGraph")) {
+            if (type === "graph" || type === "globalGraph" || type === "agentChat") {
                 if (this.layout.element.querySelector(".fullscreen")) {
                     document.getElementById("drag")?.classList.remove("fn__hidden");
                 }
+            }
+            if (type === "graph" || type === "globalGraph") {
                 const graph = this.data[type] as Graph;
                 graph.destroy();
             }
@@ -897,7 +926,7 @@ export class Dock {
                 }
                 this.layout.element.style.marginTop = "var(--b3-layout-space)";
             }
-            if ((type === "graph" || type === "globalGraph") && this.layout.element.querySelector(".fullscreen")) {
+            if ((type === "graph" || type === "globalGraph" || type === "agentChat") && this.layout.element.querySelector(".fullscreen")) {
                 document.getElementById("drag")?.classList.add("fn__hidden");
             }
             if (!this.isFloating()) {
@@ -973,6 +1002,9 @@ export class Dock {
             anotherWnd.element.style.width = "";
         }
         resizeTabs(isSaveLayout);
+        if (target.classList.contains("dock__item--active") && !removeDock && this.panelVisible) {
+            this.showDockAfterResponsiveLayout();
+        }
         if (target.classList.contains("dock__item--active") && !removeDock && (type === "graph" || type === "globalGraph")) {
             const graph = this.data[type] as Graph;
             graph.onGraph();
@@ -1079,7 +1111,8 @@ export class Dock {
     }
 
     public remove(key: TDock | string) {
-        this.toggleModel(key, false, true, true);
+        // 移除插件停靠栏时保留用户的打开状态，供重新启用时恢复。
+        this.toggleModel(key, false, true, true, false);
         this.elements[0].parentElement.querySelector(`[data-type="${key}"]`).remove();
         const custom = this.data[key] as Custom;
         if (custom.parent) {

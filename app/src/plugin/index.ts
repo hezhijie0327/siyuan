@@ -1,7 +1,10 @@
 import {sendGlobalShortcut} from "../boot/globalEvent/globalShortcut";
 import type {App} from "../index";
 import {EventBus} from "./EventBus";
-import {fetchPost} from "../util/fetch";
+import type {subMenu} from "../menus/Menu";
+import {setTopBarContextMenu} from "./topBarContextMenu";
+import {fetchPost, fetchSyncPost} from "../util/fetch";
+import {ContractFormData} from "../util/contractFormData";
 import {isMobile, isWindow} from "../util/functions";
 import {getAllEditor, getAllModels} from "../layout/getAll";
 /// #if !MOBILE
@@ -57,9 +60,13 @@ const refreshPluginToolbars = () => {
 
 export class Plugin {
     private app: App;
-    public i18n: Record<string, string>;
+    public i18n: Record<string, import("../types/api").JSONValue>;
     public eventBus: EventBus;
     public kernel: Kernel;
+    /**
+     * 当前插件实例的存储数据会话缓存，以传入的 storageName 为键，也是 loadData 读取失败时的回退值。
+     * 直接修改此对象不会写入磁盘；其他前端实例删除文件不会自动清除此实例中对应的缓存。
+     */
     public data: any = {};
     public displayName: string;
     public readonly name: string;
@@ -67,6 +74,8 @@ export class Plugin {
         filter: string[],
         html: string,
         id: string,
+        /** 是否在精简版中显示。默认值：false */
+        showInLite?: boolean,
         callback: (protyle: import("../protyle").Protyle, nodeElement: HTMLElement) => void
     }[] = [];
     public customBlockRenders: {
@@ -102,7 +111,7 @@ export class Plugin {
         app: App,
         name: string,
         displayName: string,
-        i18n: Record<string, string>
+        i18n: Record<string, import("../types/api").JSONValue>
     }) {
         this.app = options.app;
         this.i18n = options.i18n;
@@ -234,6 +243,7 @@ export class Plugin {
         title: string,
         position?: "right" | "left",
         element?: HTMLElement,
+        contextMenu?: (menu: subMenu) => void,
         callback?: (evt: MouseEvent) => void
     }) {
         if (isPluginDisposed(this)) {
@@ -269,6 +279,7 @@ export class Plugin {
                     replacement.setAttribute(name, value);
                 }
             });
+            setTopBarContextMenu(iconElement);
             iconElement.replaceWith(replacement);
             this.topBarIcons[this.topBarIcons.indexOf(iconElement)] = replacement;
             iconElement = replacement;
@@ -289,8 +300,14 @@ export class Plugin {
             }
         }
         const previousLocation = iconElement.getAttribute("data-location");
+        setTopBarContextMenu(iconElement, options.contextMenu ? (menu) => {
+            if (!isPluginDisposed(this)) {
+                options.contextMenu(menu);
+            }
+        } : undefined);
         if (options.element) {
             this.customTopBarElements.add(iconElement);
+            iconElement.setAttribute("data-topbar-custom", "true");
             iconElement.setAttribute("aria-label", options.title);
             iconElement.setAttribute("data-location", options.position || "right");
         } else {
@@ -343,6 +360,7 @@ export class Plugin {
         if (index === -1) {
             return;
         }
+        setTopBarContextMenu(this.topBarIcons[index]);
         this.topBarIcons[index].remove();
         this.topBarIcons.splice(index, 1);
         /// #if !MOBILE
@@ -408,6 +426,38 @@ export class Plugin {
         this.setting.open(this.displayName || this.name);
     }
 
+    public async loadPublishData(): Promise<Record<string, string | number | boolean | null>> {
+        if (isPluginDisposed(this)) {
+            throw {code: 410, msg: "Plugin lifecycle has ended", data: null};
+        }
+        const response = await fetchSyncPost("/api/petal/loadPluginPublishData", {packageName: this.name}, undefined, false);
+        if (response.code !== 0 || !response.data) {
+            throw response;
+        }
+        return response.data;
+    }
+
+    public async savePublishData(data: Record<string, string | number | boolean | null>): Promise<void> {
+        if (isPluginDisposed(this)) {
+            throw {code: 410, msg: "Plugin lifecycle has ended", data: null};
+        }
+        const response = await fetchSyncPost("/api/petal/savePluginPublishData", {packageName: this.name, data}, undefined, false);
+        if (response.code !== 0) {
+            throw response;
+        }
+    }
+
+    /**
+     * 读取 /data/storage/petal/ 插件私有目录中的文件，成功回调会更新 data[storageName]。
+     * 缓存值为 undefined 时先初始化为 ""；文件不存在（HTTP 202）或触发请求失败回调时，
+     * Promise 会兑现为当前缓存值，而非拒绝，因此可能返回其他窗口删除文件前的旧内容。
+     * 如需避免旧缓存回退，应在调用前执行 delete this.data[storageName]；
+     * 此时读取失败会返回 ""，仍无法区分文件缺失、读取失败与空文件，也不能据此确认磁盘状态。
+     * 负数错误码被请求层拦截等未触发回调的情况会使 Promise 持续等待，需要调用方自行设置超时。
+     * 只读或发布会话不会在此方法中直接拒绝，但私有文件读取仍受内核权限限制；公开快照应使用 loadPublishData。
+     * @returns 文件内容（解析后的 JSON 值或文本），或读取失败时的缓存值，不是统一的内核响应封装。
+     * @throws 调用时插件实例已销毁则拒绝 Promise，值为 {code: 410, msg, data: null}。
+     */
     public loadData(storageName: string): Promise<any> {
         if (isPluginDisposed(this)) {
             return Promise.reject({code: 410, msg: "Plugin lifecycle has ended", data: null});
@@ -427,6 +477,15 @@ export class Plugin {
         });
     }
 
+    /**
+     * 写入 /data/storage/petal/ 插件私有目录中的文件；对象会序列化为 JSON，其他值作为文件内容写入。
+     * 写入回调会将传入值存入 data[storageName] 并兑现 Promise；回调本身不检查响应 code。
+     * 未设置请求失败回调，网络异常或内核负数错误码（如 -1、-3）可能使 Promise 持续等待；
+     * 调用方需要自行设置超时，不能仅依赖捕获拒绝来处理写入失败。
+     * @returns 内核响应 {code, msg, data}，调用方仍需检查 code，不能将兑现视为写入成功。
+     * @throws 调用时插件实例已销毁为 410，只读或发布会话为 403，序列化或创建文件失败为 400；
+     * 拒绝值均为 {code, msg, data: null}，生命周期检查优先于只读或发布会话检查。
+     */
     public saveData(storageName: string, data: any): Promise<any | IWebSocketData> {
         if (isPluginDisposed(this)) {
             return Promise.reject({code: 410, msg: "Plugin lifecycle has ended", data: null});
@@ -458,11 +517,12 @@ export class Plugin {
                 });
                 return;
             }
-            const formData = new FormData();
-            formData.append("path", pathString);
-            formData.append("file", file);
-            formData.append("isDir", "false");
-            formData.append("app", Constants.SIYUAN_APPID);
+            const formData = new ContractFormData({
+                path: pathString,
+                file,
+                isDir: "false",
+                app: Constants.SIYUAN_APPID,
+            });
             fetchPost("/api/file/putFile", formData, (response) => {
                 this.data[storageName] = data;
                 resolve(response);
@@ -470,6 +530,15 @@ export class Plugin {
         });
     }
 
+    /**
+     * 删除 /data/storage/petal/ 插件私有目录中的文件。
+     * 删除回调会清除当前实例的 data[storageName] 并兑现 Promise；回调本身不检查响应 code。
+     * 不会直接清除其他前端实例的缓存，这些实例再次 loadData 时可能回退到旧内容。
+     * 未设置请求失败回调，网络异常或内核负数错误码可能使 Promise 持续等待，调用方需要自行设置超时。
+     * @returns 内核响应 {code, msg, data}，调用方仍需检查 code，不能将兑现视为删除成功。
+     * @throws 调用时插件实例已销毁为 410，只读或发布会话为 403，拒绝值为 {code, msg, data: null}；
+     * 生命周期检查优先于只读或发布会话检查。
+     */
     public removeData(storageName: string): Promise<IWebSocketData> {
         if (isPluginDisposed(this)) {
             return Promise.reject({code: 410, msg: "Plugin lifecycle has ended", data: null} as IWebSocketData);
@@ -686,7 +755,7 @@ export class Plugin {
         x?: number,
         y?: number,
         targetElement?: HTMLElement,
-        originalRefBlockIDs?: IObject,
+        originalRefBlockIDs?: Record<string, string>,
         isBacklink: boolean,
     }) => {
         if (isPluginDisposed(this)) {

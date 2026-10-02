@@ -1,3 +1,4 @@
+import {escapeHtmlTextAndAttr} from "../../../util/escape";
 import {renderAVAttribute} from "./blockAttr";
 import {
     cancelHeightAnimation,
@@ -19,6 +20,7 @@ const refreshActions = new Set<TOperation>([
     "duplicateAttrViewKey",
     "setAttrViewColIcon",
     "setAttrViewColDesc",
+    "setAttrViewColAttributePanelVisibility",
     "setAttrViewName",
     "setAttrViewCustomColors",
     "updateAttrViewColTemplate",
@@ -123,7 +125,7 @@ export class AVAttributePanel {
             }
             this.element.dataset.rendered = "true";
             this.updateTabs();
-            this.updateEmptyState();
+            this.updateReadonly();
             this.element.classList.toggle("fn__none", !renderedElement.querySelector("[data-av-id], .custom-attr__avbacklinks"));
             const callbacks = this.renderCallbacks.splice(0);
             callbacks.forEach(callback => callback(this.bodyElement));
@@ -162,6 +164,18 @@ export class AVAttributePanel {
         } else {
             this.render();
         }
+    }
+
+    public updateReadonly() {
+        this.element.dataset.readonly = String(Boolean(this.protyle.disabled));
+        this.bodyElement.dataset.readonly = this.element.dataset.readonly;
+        this.bodyElement.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea").forEach(item => {
+            item.readOnly = Boolean(this.protyle.disabled);
+        });
+        this.element.querySelectorAll<HTMLElement>('[data-type="av-tab"]').forEach(item => {
+            item.draggable = !this.protyle.disabled;
+        });
+        this.updateEmptyState();
     }
 
     public hasDatabase(avID: string) {
@@ -235,7 +249,7 @@ export class AVAttributePanel {
     }
 
     public displayEmptyFields() {
-        if (!window.siyuan.config.editor.databaseAttrHideEmpty || this.showEmptyFields) {
+        if (this.showEmptyFields) {
             return;
         }
         this.showEmptyFields = true;
@@ -294,7 +308,7 @@ export class AVAttributePanel {
             }
             tabsElement.innerHTML = databaseElements.map(item => {
                 const title = item.querySelector(".custom-attr__avheader .block__logo span")?.textContent || window.siyuan.languages.database;
-                return `<button type="button" draggable="${!this.protyle.disabled}" class="item${item.dataset.avId === this.activeAvID ? " item--focus" : ""}" data-type="av-tab" data-id="${item.dataset.avId}"><span class="item__text">${Lute.EscapeHTMLStr(title)}</span></button>`;
+                return `<button type="button" draggable="${!this.protyle.disabled}" class="item${item.dataset.avId === this.activeAvID ? " item--focus" : ""}" data-type="av-tab" data-id="${item.dataset.avId}"><span class="item__text">${escapeHtmlTextAndAttr(title)}</span></button>`;
             }).join("");
             this.bindTabDrag(tabsElement);
         } else {
@@ -389,6 +403,11 @@ export class AVAttributePanel {
             }
             event.preventDefault();
             event.stopPropagation();
+            if (this.protyle.disabled) {
+                clearDragState();
+                this.updateTabs();
+                return;
+            }
             const tabElements = Array.from(tabsElement.querySelectorAll<HTMLElement>('[data-type="av-tab"]'));
             const avIDs = tabElements.map(item => item.dataset.id || "");
             const index = avIDs.indexOf(draggedAvID);
@@ -453,16 +472,23 @@ export class AVAttributePanel {
     }
 
     private updateEmptyState() {
+        this.element.dataset.readonly = String(Boolean(this.protyle.disabled));
         const hideEmpty = window.siyuan.config.editor.databaseAttrHideEmpty;
-        if (!hideEmpty) {
+        const hasHiddenFields = Boolean(this.bodyElement.querySelector(
+            '.av__row[data-panel-visibility="hide"], .av__row[data-panel-visibility="hide-empty"]'));
+        if (!hideEmpty && !hasHiddenFields) {
             this.showEmptyFields = false;
         }
+        this.element.classList.toggle("protyle-db-attr--show-all", this.showEmptyFields);
+        this.bodyElement.querySelectorAll<HTMLElement>(":scope > [data-av-id]").forEach(item => {
+            item.dataset.panelShowAll = String(this.showEmptyFields);
+        });
         updateEmptyState(this.element, hideEmpty && !this.showEmptyFields);
         const editElement = this.element.querySelector<HTMLElement>('[data-type="toggle-empty"]');
-        editElement?.classList.toggle("fn__none", !hideEmpty || this.collapsed);
-        editElement?.setAttribute("aria-label", window.siyuan.languages[
-            this.showEmptyFields ? "hideEmptyFields" : "displayEmptyFields"
-        ]);
+        editElement?.classList.toggle("fn__none", (!hideEmpty && !hasHiddenFields) || this.collapsed);
+        editElement?.setAttribute("aria-label", hasHiddenFields ? window.siyuan.languages.edit :
+            window.siyuan.languages[this.showEmptyFields ? "hideEmptyFields" : "displayEmptyFields"]);
+        editElement?.setAttribute("aria-pressed", String(this.showEmptyFields));
     }
 
     private hideByDisplayConfig() {

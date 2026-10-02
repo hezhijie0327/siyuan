@@ -4,6 +4,7 @@ import {buildEntryVisibilityMenuItems as buildMenuItems,
 } from "./menuItems";
 import {getDockEntryKey, STATUS_BAR_ROOT_PATH, TOP_BAR_ROOT_PATH} from "./catalog";
 import {getEntryOrder, isEntryVisible, setEntryVisibilityValue} from "./runtime";
+import {isInMobileApp} from "../../protyle/util/compatibility";
 
 const findEntryElement = (path: string) => {
     const separatorIndex = path.indexOf(".");
@@ -37,6 +38,10 @@ const getEntryIcon = (path: string): Pick<IMenu, "icon" | "iconHTML"> => {
     if (!element) {
         return {};
     }
+    if (element.getAttribute("data-topbar-custom") === "true") {
+        // 插件自定义控件保留空图标占位，不提取其内部内容。
+        return {};
+    }
     const customElement = element.querySelector(":scope > .b3-menu__icon--custom");
     if (customElement) {
         const iconElement = customElement.cloneNode(true) as HTMLElement;
@@ -63,6 +68,7 @@ const getEntryIcon = (path: string): Pick<IMenu, "icon" | "iconHTML"> => {
 };
 
 const getRuntime = (): IEntryVisibilityMenuRuntime => ({
+    isInMobileApp: isInMobileApp(),
     getEntryOrder,
     isEntryVisible,
     setEntryVisibilityValue,

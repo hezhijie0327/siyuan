@@ -1,3 +1,5 @@
+import {escapeHtmlTextAndAttr} from "../../util/escape";
+import type {BlockQueryRequestInput} from "../../types/api";
 import {
     focusByOffset,
     focusByRange,
@@ -30,6 +32,7 @@ import {scheduleCaretScroll} from "../wysiwyg/caretScroll";
 import {getParentDocumentID} from "../util/parentDocument";
 import {getTextSiyuanFromClipboardData} from "../util/clipboardData";
 import {enterDocumentFromTitle} from "./titleEnter";
+import {setTitleAutoDirection} from "../render/autoDirection";
 
 export class Title {
     public element: HTMLElement;
@@ -49,6 +52,7 @@ export class Title {
             this.element.innerHTML = `<span aria-label="${isMac() ? window.siyuan.languages.gutterTip2 : window.siyuan.languages.gutterTip2.replace("⇧", "Shift+")}" data-position="west" class="protyle-title__icon ariaLabel"><svg><use xlink:href="#iconFile"></use></svg></span>
 <div contenteditable="true" spellcheck="${window.siyuan.config.editor.spellcheck}" class="protyle-title__input" data-tip="${window.siyuan.languages._kernel[16]}"> </div><div class="protyle-attr"></div>`;
             this.editElement = this.element.querySelector(".protyle-title__input");
+            setTitleAutoDirection(this.editElement, window.siyuan.config.editor.autoDirection);
             this.editElement.addEventListener("paste", (event: ClipboardEvent) => {
                 event.stopPropagation();
                 event.preventDefault();
@@ -165,7 +169,7 @@ export class Title {
                     event.preventDefault();
                     event.stopPropagation();
                 } else if (matchHotKey(window.siyuan.config.keymap.editor.general.attr, event)) {
-                    const docInfoParam: IObject = {
+                    const docInfoParam: BlockQueryRequestInput = {
                         id: protyle.block.rootID
                     };
                     if (isEncryptedBox(protyle.notebookId)) {
@@ -186,7 +190,7 @@ export class Title {
             iconElement.addEventListener("click", (event) => {
                 // 不使用 window.siyuan.shiftIsPressed ，否则窗口未激活时按 Shift 点击块标无法打开属性面板 https://github.com/siyuan-note/siyuan/issues/15075
                 if (event.shiftKey) {
-                    const docInfoParam: IObject = {
+                    const docInfoParam: BlockQueryRequestInput = {
                         id: protyle.block.rootID
                     };
                     if (isEncryptedBox(protyle.notebookId)) {
@@ -325,7 +329,7 @@ export class Title {
                 return;
             }
             /// #endif
-            const docInfoParam: IObject = {
+            const docInfoParam: BlockQueryRequestInput = {
                 id: protyle.block.rootID
             };
             if (isEncryptedBox(protyle.notebookId)) {
@@ -406,21 +410,21 @@ export class Title {
         }
         let nodeAttrHTML = "";
         if (response.data.ial.bookmark) {
-            nodeAttrHTML += `<div class="protyle-attr--bookmark">${Lute.EscapeHTMLStr(response.data.ial.bookmark)}</div>`;
+            nodeAttrHTML += `<div class="protyle-attr--bookmark">${escapeHtmlTextAndAttr(response.data.ial.bookmark)}</div>`;
         }
         if (response.data.ial.name) {
-            nodeAttrHTML += `<div class="protyle-attr--name"><svg><use xlink:href="#iconN"></use></svg>${Lute.EscapeHTMLStr(response.data.ial.name)}</div>`;
+            nodeAttrHTML += `<div class="protyle-attr--name"><svg><use xlink:href="#iconN"></use></svg>${escapeHtmlTextAndAttr(response.data.ial.name)}</div>`;
         }
         if (response.data.ial.alias) {
-            nodeAttrHTML += `<div class="protyle-attr--alias"><svg><use xlink:href="#iconA"></use></svg>${Lute.EscapeHTMLStr(response.data.ial.alias)}</div>`;
+            nodeAttrHTML += `<div class="protyle-attr--alias"><svg><use xlink:href="#iconA"></use></svg>${escapeHtmlTextAndAttr(response.data.ial.alias)}</div>`;
         }
         if (response.data.ial.memo) {
-            nodeAttrHTML += `<div class="protyle-attr--memo ariaLabel" aria-label="${Lute.EscapeHTMLStr(response.data.ial.memo)}" data-position="north"><svg><use xlink:href="#iconM"></use></svg></div>`;
+            nodeAttrHTML += `<div class="protyle-attr--memo ariaLabel" aria-label="${escapeHtmlTextAndAttr(response.data.ial.memo)}" data-position="north"><svg><use xlink:href="#iconM"></use></svg></div>`;
         }
         if (response.data.ial["custom-avs"]) {
             let avTitle = "";
             response.data.attrViews.forEach((item: { id: string, name: string }) => {
-                avTitle += `<span data-av-id="${item.id}" data-popover-url="/api/av/getMirrorDatabaseBlocks" class="popover__block">${Lute.EscapeHTMLStr(item.name)}</span>&nbsp;`;
+                avTitle += `<span data-av-id="${item.id}" data-popover-url="/api/av/getMirrorDatabaseBlocks" class="popover__block">${escapeHtmlTextAndAttr(item.name)}</span>&nbsp;`;
             });
             if (avTitle) {
                 avTitle = avTitle.substring(0, avTitle.length - 6);

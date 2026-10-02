@@ -4,6 +4,7 @@ import {test} from "node:test";
 import {runInNewContext} from "node:vm";
 import {ModuleKind, ScriptTarget, transpileModule} from "typescript";
 import {queueTransaction, queueTransactionBatch, waitForPendingTransactions} from "../util/transactionQueue";
+import {getEditorTransaction} from "../util/transactionContract";
 
 const compiled = transpileModule(readFileSync("src/protyle/wysiwyg/transaction.ts", "utf8"), {
     compilerOptions: {module: ModuleKind.CommonJS, target: ScriptTarget.ES2021},
@@ -18,6 +19,7 @@ const fixture = () => {
     let finish: (success: boolean) => void;
     const exports: any = {};
     const dependencies = {
+        getEditorTransaction,
         Constants: {},
         queueTransaction,
         queueTransactionBatch,
@@ -25,6 +27,9 @@ const fixture = () => {
             ({doOperations, undoOperations}),
         cleanBlockSelectionModeHTML: (html: string) => html,
         cleanTableCellRichHTML: (html: string) => html,
+        cleanTableVirtualizationHTML: (html: string) => html,
+        cleanListMindmapHTML: (html: string) => html,
+        restoreInlineElementBoundaryHTML: (html: string) => html,
         normalizeHTMLAssetIFrameBlockDOM: (html: string) => html,
         cleanHeadingNumberOperations: (): void => undefined,
         needSubscribe: () => true,
@@ -36,6 +41,7 @@ const fixture = () => {
         countBlockWord: (): void => undefined,
         handleViewFoldSourceOperation: () => false,
         queueHeadingNumberRefresh: (): void => undefined,
+        refreshHeadingFoldIndicators: (): void => undefined,
         applyViewFoldStates: (): void => undefined,
         fetchPost: (_url: string, data: {transactions: unknown[]}, callback: (response: unknown) => void) =>
             new Promise<void>(resolve => {

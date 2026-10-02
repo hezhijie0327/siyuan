@@ -1,3 +1,5 @@
+import {escapeHtmlTextAndAttr} from "../../util/escape";
+import {openInputDialog} from "../../dialog/inputDialog";
 import {updateTransaction} from "../wysiwyg/transaction";
 import {
     focusBlock,
@@ -16,8 +18,6 @@ import {insertEmptyBlock} from "../../block/util";
 import {removeBlock} from "../wysiwyg/remove";
 import {hasNextSibling, hasPreviousSibling} from "../wysiwyg/getBlock";
 import * as dayjs from "dayjs";
-import {Dialog} from "../../dialog";
-import {isMobile} from "../../util/functions";
 import {
     getProjectedTableHeadRowCount,
     getTableHeadRowCount,
@@ -114,38 +114,36 @@ const goPreviousCell = (cellElement: HTMLElement, range: Range, isSelected = tru
 };
 
 export const setTableAlign = (protyle: IProtyle, cellElements: HTMLElement[], nodeElement: Element, type: string,
-                              range: Range, clearCellStyle = false) => {
+                              range: Range, alignWholeTable = false) => {
     range.insertNode(document.createElement("wbr"));
     const html = nodeElement.outerHTML;
-
     const tableElement = nodeElement.querySelector("table");
-    if (clearCellStyle) {
-        tableElement.querySelectorAll<HTMLElement>("th, td").forEach(cell => {
+    const grid = buildTableGrid(tableElement);
+    const columns = new Set<number>();
+    grid.cellInfos.forEach(info => {
+        if (cellElements.includes(info.cell)) {
+            for (let column = info.col; column < info.col + info.colspan; column++) {
+                columns.add(column);
+            }
+        }
+    });
+    const cells = new Set<HTMLTableCellElement>();
+    grid.cellInfos.forEach(info => {
+        if (alignWholeTable || Array.from({length: info.colspan}, (_, index) => info.col + index).some(column => columns.has(column))) {
+            cells.add(info.cell);
+        }
+    });
+    cells.forEach(cell => {
+        cell.removeAttribute("align");
+        if (type) {
+            cell.style.setProperty("text-align", type);
+        } else {
             cell.style.removeProperty("text-align");
             if (!cell.getAttribute("style")) {
                 cell.removeAttribute("style");
             }
-        });
-    }
-    const columnCnt = tableElement.rows[0].cells.length;
-    const rowCnt = tableElement.rows.length;
-    const currentColumns: number[] = [];
-
-    for (let i = 0; i < rowCnt; i++) {
-        for (let j = 0; j < columnCnt; j++) {
-            if (tableElement.rows[i].cells[j] === cellElements[currentColumns.length]) {
-                currentColumns.push(j);
-            }
         }
-        if (currentColumns.length > 0) {
-            break;
-        }
-    }
-    for (let k = 0; k < rowCnt; k++) {
-        currentColumns.forEach(item => {
-            tableElement.rows[k].cells[item].setAttribute("align", type);
-        });
-    }
+    });
     updateTransaction(protyle, nodeElement, html);
     focusByWbr(tableElement, range);
 };
@@ -158,7 +156,9 @@ export const insertRow = (protyle: IProtyle, range: Range, cellElement: HTMLElem
 
     let rowHTML = "";
     for (let m = 0; m < cellElement.parentElement.childElementCount; m++) {
-        rowHTML += `<td align="${cellElement.parentElement.children[m].getAttribute("align") || ""}"></td>`;
+        const source = cellElement.parentElement.children[m] as HTMLTableCellElement;
+        const align = source.style.textAlign || source.getAttribute("align");
+        rowHTML += `<td${["left", "center", "right"].includes(align) ? ` style="text-align: ${align}"` : ""}></td>`;
     }
     let newRowElement: HTMLTableRowElement;
     if (cellElement.tagName === "TH") {
@@ -193,7 +193,8 @@ export const insertRowAbove = (protyle: IProtyle, range: Range, cellElement: HTM
         // 不需要空格，否则列宽调整后在空格后插入图片会换行 https://github.com/siyuan-note/siyuan/issues/7631
         const classAttr = className ? ` class="${className}"` : "";
         const tag = cellElement.tagName === "TH" ? "th" : "td";
-        rowHTML += `<${tag}${classAttr} colspan="${currentCellElement.colSpan}" align="${currentCellElement.getAttribute("align") || ""}"></${tag}>`;
+        const align = currentCellElement.style.textAlign || currentCellElement.getAttribute("align");
+        rowHTML += `<${tag}${classAttr} colspan="${currentCellElement.colSpan}"${["left", "center", "right"].includes(align) ? ` style="text-align: ${align}"` : ""}></${tag}>`;
     }
 
     if (hasNone) {
@@ -769,16 +770,12 @@ export const updateTableTitle = (protyle: IProtyle, nodeElement: Element) => {
     }
     const captionElement = nodeElement.querySelector("caption");
     window.siyuan.menus.menu.remove();
-    const dialog = new Dialog({
+    const html = nodeElement.outerHTML;
+    openInputDialog({
         title: window.siyuan.languages.table,
-        width: isMobile() ? "92vw" : "520px",
-        content: `<div class="b3-dialog__content">
-    <label>
-        <div>${window.siyuan.languages.title}</div>
-        <div class="fn__hr"></div>
-        <input class="b3-text-field fn__block">
-    </label>
-    <div class="fn__hr--b"></div>
+        label: window.siyuan.languages.title,
+        value: captionElement?.textContent || "",
+        extraContent: `<div class="fn__hr--b"></div>
     <label>
         <div>${window.siyuan.languages.position}</div>
         <div class="fn__hr"></div>
@@ -786,46 +783,28 @@ export const updateTableTitle = (protyle: IProtyle, nodeElement: Element) => {
             <option value="top">${window.siyuan.languages.up}</option>
             <option value="bottom" ${captionElement?.style.captionSide === "bottom" ? "selected" : ""}>${window.siyuan.languages.down}</option>
         </select>
-    </label>
-</div>
-<div class="b3-dialog__action">
-    <button class="b3-button b3-button--cancel">${window.siyuan.languages.cancel}</button><div class="fn__space"></div>
-    <button class="b3-button b3-button--text">${window.siyuan.languages.confirm}</button>
-</div>
-<div>`,
-    });
-    const html = nodeElement.outerHTML;
-    const inputElement = dialog.element.querySelector(".b3-text-field") as HTMLInputElement;
-    const btnsElement = dialog.element.querySelectorAll(".b3-button");
-    dialog.bindInput(inputElement, () => {
-        (btnsElement[1] as HTMLButtonElement).click();
-    });
-    btnsElement[0].addEventListener("click", () => {
-        dialog.destroy();
-    });
-    btnsElement[1].addEventListener("click", () => {
-        const title = inputElement.value.trim();
-        const location = (dialog.element.querySelector("select") as HTMLSelectElement).value;
-        if (title) {
-            const html = `<caption contenteditable="false" ${location === "bottom" ? 'style="caption-side: bottom;"' : ""}>${Lute.EscapeHTMLStr(title)}</caption>`;
-            if (captionElement) {
-                captionElement.outerHTML = html;
+    </label>`,
+        onConfirm: (value, dialog) => {
+            const title = value.trim();
+            const location = (dialog.element.querySelector("select") as HTMLSelectElement).value;
+            if (title) {
+                const html = `<caption contenteditable="false" ${location === "bottom" ? 'style="caption-side: bottom;"' : ""}>${escapeHtmlTextAndAttr(title)}</caption>`;
+                if (captionElement) {
+                    captionElement.outerHTML = html;
+                } else {
+                    nodeElement.querySelector("table").insertAdjacentHTML("afterbegin", html);
+                }
+                nodeElement.setAttribute("caption", escapeHtmlTextAndAttr(html));
             } else {
-                nodeElement.querySelector("table").insertAdjacentHTML("afterbegin", html);
+                if (captionElement) {
+                    captionElement.remove();
+                }
+                nodeElement.removeAttribute("caption");
             }
-            nodeElement.setAttribute("caption", Lute.EscapeHTMLStr(html));
-        } else {
-            if (captionElement) {
-                captionElement.remove();
-            }
-            nodeElement.removeAttribute("caption");
-        }
-        updateTransaction(protyle, nodeElement, html);
-        dialog.destroy();
+            updateTransaction(protyle, nodeElement, html);
+            dialog.destroy();
+        },
     });
-    inputElement.value = captionElement?.textContent || "";
-    inputElement.focus();
-    inputElement.select();
 };
 
 export interface ITableCellInfo {
@@ -1275,6 +1254,15 @@ export const getTableRangeCells = (tableElement: HTMLElement, startCell?: HTMLEl
         }
     });
     return ret;
+};
+
+export const getTableClipboardBlockDOM = (html: string) => {
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const table = container.querySelector("table");
+    table.setAttribute("contenteditable", "true");
+    table.setAttribute("spellcheck", "false");
+    return `<div data-node-id="${Lute.NewNodeID()}" data-type="NodeTable" class="table"><div contenteditable="false">${table.outerHTML}<div class="protyle-action__table"><div class="table__resize"></div><div class="table__select"></div></div></div><div class="protyle-attr" contenteditable="false">\u200b</div></div>`;
 };
 
 // getTableRangeHTML 根据起始单元格到结束单元格的矩形区域，重建一个合法的 <table> HTML。

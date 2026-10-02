@@ -22,6 +22,22 @@ test("mobile toolbar shares desktop identifiers and declaration order", () => {
         DESKTOP_TOOLBAR_ENTRIES.filter(item => item.name !== "format-painter").map(item => item.key));
 });
 
+test("block type enters old orders without disturbing hidden entries or plugin slots", () => {
+    const defaults = DESKTOP_TOOLBAR_ENTRIES.map(item => item.key);
+    const saved = defaults.filter(key => key !== "block-type");
+    saved.splice(saved.indexOf("strong"), 0, "plugin:missing:action");
+    const merged = mergeEntryOrderPreservingUnknown(defaults, saved);
+    assert.equal(merged.filter(key => key === "block-type").length, 1);
+    assert.equal(merged.indexOf("plugin:missing:action"), saved.indexOf("plugin:missing:action"));
+    assert.deepEqual(merged.filter(key => !["block-type", "plugin:missing:action"].includes(key)),
+        saved.filter(key => key !== "plugin:missing:action"));
+    const items = defaults.map(key => ({key, separator: key.startsWith("separator_")}));
+    const hidden = resolve(items, {order: merged, hidden: ["block-type", "a"]});
+    assert.equal(hidden.visible.some(item => item.key === "block-type" || item.key === "a"), false);
+    assert.equal(hidden.visible[0].separator, false);
+    assert.equal(hidden.visible[hidden.visible.length - 1].separator, false);
+});
+
 test("font entries merge into old profiles while preserving plugin slots and hidden entries", () => {
     const defaults = DESKTOP_TOOLBAR_ENTRIES.map(item => item.key);
     const separators = new Set(DESKTOP_TOOLBAR_ENTRIES.filter(item => item.separator).map(item => item.key));
@@ -29,7 +45,9 @@ test("font entries merge into old profiles while preserving plugin slots and hid
     saved.splice(saved.indexOf("strong"), 0, "plugin:unloaded:action");
     const merged = mergeEntryOrderPreservingUnknown(defaults, saved, undefined, separators);
     assert.ok(merged.includes("plugin:unloaded:action"));
-    assert.deepEqual(merged.filter(key => !["font-family", "font-size"].includes(key)), saved);
+    assert.equal(merged.indexOf("plugin:unloaded:action"), saved.indexOf("plugin:unloaded:action"));
+    assert.deepEqual(merged.filter(key => !["font-family", "font-size", "plugin:unloaded:action"].includes(key)),
+        saved.filter(key => key !== "plugin:unloaded:action"));
     const items = defaults.map(key => ({key, separator: separators.has(key)}));
     const result = resolve(items, {order: merged, hidden: ["text", "font-family"]});
     assert.equal(result.visible.some(item => item.key === "text" || item.key === "font-family"), false);

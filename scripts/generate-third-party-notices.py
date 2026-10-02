@@ -43,6 +43,27 @@ BUNDLED_COMPONENTS = [
         "Desktop runtime; Electron also ships LICENSES.chromium.html for Chromium and its dependencies",
     ),
     (
+        "ONNX Runtime",
+        "1.24.3 (Windows, Linux, Apple Silicon, Android, HarmonyOS), 1.23.2 (Intel macOS), 1.24.2 (iOS)",
+        "MIT",
+        "https://github.com/microsoft/onnxruntime",
+        "Native CPU OCR runtime; license and dependency notices in app/stage/ocr/ONNXRUNTIME-LICENSE and ONNXRUNTIME-THIRD-PARTY-NOTICES.txt; desktop libraries also include their corresponding notices",
+    ),
+    (
+        "Microsoft Visual C++ Runtime",
+        "14.x from the release builder's licensed Visual Studio redist",
+        "Microsoft Visual Studio Software License Terms",
+        "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution#visual-c-runtime-files",
+        "Windows OCR runtime directories include unmodified app-local CRT DLLs, MICROSOFT-VC-RUNTIME-NOTICE.txt, and vc-runtime-files.json with the exact file digests",
+    ),
+    (
+        "PaddleOCR PP-OCRv6 Tiny and Small ONNX models",
+        "Pinned revisions in scripts/ocr-assets.json",
+        "Apache-2.0",
+        "https://huggingface.co/collections/PaddlePaddle/pp-ocrv6",
+        "app/stage/ocr/models/; license text in app/stage/ocr/PADDLEOCR-LICENSE",
+    ),
+    (
         "DOMPurify",
         "3.3.3",
         "Apache-2.0 OR MPL-2.0",
@@ -58,7 +79,7 @@ BUNDLED_COMPONENTS = [
     ),
     (
         "abcjs",
-        "6.7.0",
+        "6.7.1",
         "MIT",
         "https://github.com/paulrosen/abcjs",
         "app/stage/protyle/js/abcjs/",
@@ -421,6 +442,13 @@ BUNDLED_COMPONENTS = [
         "Localized names and search keywords in app/appearance/emojis/conf.json",
     ),
     (
+        "Unicode Emoji test data",
+        "17.0",
+        "Unicode-3.0",
+        "https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt",
+        "New fully-qualified sequences in app/tests/fixtures/unicode17-emoji.json",
+    ),
+    (
         "Pexels cover photos",
         "72 selected photographs",
         "Pexels License",
@@ -445,18 +473,18 @@ FONT_COMPONENTS = [
         "app/appearance/fonts/JetBrainsMono-2.304/LICENSE",
     ),
     (
-        "LXGW WenKai Lite",
-        "1.501",
+        "LXGW WenKai GB Lite",
+        "1.521",
         "OFL-1.1",
-        "https://github.com/lxgw/LxgwWenKai-Lite",
-        "app/appearance/fonts/LxgwWenKai-Lite-1.501/LICENSE",
+        "https://github.com/lxgw/LxgwWenkaiGB-Lite",
+        "app/appearance/fonts/LxgwWenKaiGB-Lite-1.521/LICENSE",
     ),
     (
         "Noto COLRv1 Emoji",
-        "2.047",
+        "2.051",
         "OFL-1.1",
         "https://github.com/googlefonts/noto-emoji",
-        "app/appearance/fonts/Noto-COLRv1-2.047/LICENSE",
+        "app/appearance/fonts/Noto-COLRv1-2.051/LICENSE",
     ),
 ]
 

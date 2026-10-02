@@ -1,4 +1,5 @@
 import {showMessage} from "../../dialog/message";
+import {openPluginPublishData} from "./pluginPublish";
 import {fetchPost} from "../../util/fetch";
 import {confirmDialog} from "../../dialog/confirmDialog";
 /// #if !BROWSER
@@ -22,6 +23,7 @@ import {
     isBazaarPackageType,
 } from "./packageConfig";
 import {openRatingDialog, refreshVisibleRatingUI, syncRatingUser} from "./rating";
+import {getSettingsWindowHost} from "../setting/windowContext";
 
 type TBazaarController = typeof import("../bazaar").bazaar;
 type TBazaarPackageSource = "downloaded" | "updated" | "bazaar";
@@ -123,11 +125,7 @@ const ACTION_HANDLERS = {
         }
         const item = installedItem || pkgItem;
         /// #if !BROWSER
-        if (["icons", "themes"].includes(pkgType)) {
-            useShell("openPath", path.join(window.siyuan.config.system.confDir, "appearance", pkgType, item.name));
-        } else {
-            useShell("openPath", path.join(window.siyuan.config.system.dataDir, pkgType, item.name));
-        }
+        useShell("openPath", path.join(window.siyuan.config.system.dataDir, pkgType, item.name));
         /// #endif
         return HANDLED;
     }) satisfies TBazaarActionHandler,
@@ -304,12 +302,12 @@ const ACTION_HANDLERS = {
             return CONTINUE;
         }
         if (!window.siyuan.config.bazaar.petalDisabled) {
-            app.plugins.find((item: Plugin) => {
-                if (item.name === pkgItem.name) {
-                    item.openSetting();
-                    return true;
-                }
-            });
+            const host = getSettingsWindowHost();
+            if (host) {
+                void host.openPluginSetting(pkgItem.name).catch(console.error);
+            } else {
+                app.plugins.find((item: Plugin) => item.name === pkgItem.name)?.openSetting();
+            }
         }
         return HANDLED;
     }) satisfies TBazaarActionHandler,
@@ -332,6 +330,12 @@ const ACTION_HANDLERS = {
         return HANDLED_NATIVE;
     }) satisfies TBazaarActionHandler,
     "plugin-publish-enable-label": (() => HANDLED_NATIVE) satisfies TBazaarActionHandler,
+    "plugin-publish-data": ((context) => {
+        if (context.installedItem) {
+            void openPluginPublishData(context.installedItem.name);
+        }
+        return HANDLED;
+    }) satisfies TBazaarActionHandler,
     "plugin-publish-enable": ((context, target) => {
         const {controller, app, mount, installedItem} = context;
         if (!installedItem) {

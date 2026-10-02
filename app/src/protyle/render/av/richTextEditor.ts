@@ -2,6 +2,7 @@ import {escapeHtml} from "../../../util/escape";
 import {isMobile} from "../../../util/functions";
 import {callMobileAppShowKeyboard} from "../../../mobile/util/mobileAppUtil";
 import {hintRef, hintSlash} from "../../hint/extend";
+import {registerBuiltinSlashHint} from "../../hint/builtinSlash";
 import {mountProtyleLiteFragment} from "../../lite/fragmentEditor";
 import {getDefaultToolbar} from "../../toolbar/defaults";
 import {highlightRender} from "../highlightRender";
@@ -78,10 +79,10 @@ const hintAVRef = (key: string, protyle: IProtyle, source: THintSource) => {
     return hintRef(key, protyle, source);
 };
 
-const hintAVSlash = (key: string, protyle: IProtyle, source: THintSource) => {
+const hintAVSlash = registerBuiltinSlashHint((key: string, protyle: IProtyle, source: THintSource) => {
     prepareHint(protyle);
     return hintSlash(key, protyle, source).filter((item) => item.id && SAFE_SLASH_IDS.has(item.id));
-};
+});
 
 const setPanelPosition = (panelElement: HTMLElement, anchorElement: HTMLElement) => {
     if (isMobile()) {
@@ -102,16 +103,19 @@ export const openAVRichTextEditor = (options: AVRichTextEditorOptions) => {
     const mobile = isMobile();
     const maskElement = document.createElement("div");
     maskElement.className = "av__mask av__richtext-mask";
+    maskElement.dataset.avBlockId = options.nodeElement.dataset.nodeId;
     maskElement.style.zIndex = (++window.siyuan.zIndex).toString();
     maskElement.innerHTML = `<div class="av__richtext-editor" role="dialog">
-    <div class="av__richtext-host"></div>
     ${mobile ? `<div class="av__richtext-actions">
         <button type="button" class="b3-button b3-button--cancel" data-type="cancel">${escapeHtml(window.siyuan.languages.cancel)}</button>
         <button type="button" class="b3-button b3-button--text" data-type="save">${escapeHtml(window.siyuan.languages.save)}</button>
     </div>` : ""}
+    <div class="av__richtext-host"></div>
 </div>`;
     document.body.appendChild(maskElement);
-    const endEditorSession = beginAVEditorSession(options.protyle.element);
+    // 独立记录详情使用未挂载的编辑器上下文，浮层生命周期跟随实际可见的详情面板。
+    const ownerElement = options.nodeElement.closest<HTMLElement>(".protyle-db-row") || options.protyle.element;
+    const endEditorSession = beginAVEditorSession(ownerElement);
     const panelElement = maskElement.firstElementChild as HTMLElement;
     const hostElement = panelElement.querySelector<HTMLElement>(".av__richtext-host");
     hostElement.dataset.protyleLiteRender = "safe";
@@ -157,7 +161,7 @@ export const openAVRichTextEditor = (options: AVRichTextEditorOptions) => {
     let finished = false;
     let cancelled = false;
     const isOwnerConnected = () => {
-        if (!options.protyle.element.isConnected || !options.nodeElement.isConnected) {
+        if (!ownerElement.isConnected || !options.nodeElement.isConnected) {
             return false;
         }
         if (options.anchorElement.isConnected) {

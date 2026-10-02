@@ -23,7 +23,7 @@ export const loadBacklinkRefFilterMenu = async (options: {
         id: options.id, k: options.keyword, mk: "", notebook: options.notebook,
         sourceFilter: options.filter, refDefCandidates: true,
     });
-    if (!options.isCurrent() || response.code !== 0) {
+    if (!options.isCurrent() || response.code !== 0 || !response.data || !("refDefs" in response.data)) {
         return [];
     }
     const candidates: IRefDef[] = response.data.refDefs || [];
@@ -63,7 +63,7 @@ export const loadBacklinkRefFilterMenu = async (options: {
     };
     return [{
         type: "empty",
-        label: `<input ${Constants.ATTRIBUTE_MENU_KEYMAP}="true" class="b3-text-field fn__block" style="margin: 4px 0" placeholder="${escapeAttr(escapeHtml(languages.search))}">`,
+        label: `<input spellcheck="false" ${Constants.ATTRIBUTE_MENU_KEYMAP}="true" class="b3-text-field fn__block" style="margin: 4px 0" placeholder="${escapeAttr(escapeHtml(languages.search))}">`,
         bind: element => {
             input = element.querySelector("input");
             input.setAttribute("aria-label", languages.search);

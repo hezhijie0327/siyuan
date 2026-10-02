@@ -1,13 +1,13 @@
+import {keymapPayload, keymapRowPatch} from "../keymapPayload";
 import {isMac, updateHotkeyTip} from "../../protyle/util/compatibility";
 import {matchHotKey} from "../../protyle/util/hotKey";
 import {Constants} from "../../constants";
 import {hideMessage, showMessage} from "../../dialog/message";
 import {fetchSyncPost} from "../../util/fetch";
 import {exportLayout} from "../../layout/util";
-import {updateDockHotkeys} from "../../layout/dock/util";
+import {applyKeymap} from "./keymapRuntime";
 import {confirmDialog} from "../../dialog/confirmDialog";
 import {sendGlobalShortcut, sendUnregisterGlobalShortcut} from "../../boot/globalEvent/globalShortcut";
-import {syncAppMenuShortcuts} from "../../boot/globalEvent/commonHotkey";
 import {normalizeSearchText} from "../search/normalize";
 import {genButtonRowHtml, genConfigGroup} from "../render/render";
 import type {Plugin} from "../../plugin";
@@ -18,6 +18,8 @@ import {getKeymapBindings, getKeymapItem, setKeymapBindings, normalizeShortcutKe
 import {genKeymapRowHtml, getRowBindings, renderRowBindings} from "./keymapRow";
 import {escapeHtml} from "../../util/escape";
 import {Menu} from "../../plugin/Menu";
+import {refreshSettingConfig} from "../setting/sync";
+import type {App} from "../../index";
 
 const keymapToolbarSearchStrings = (): string[] => [
     window.siyuan.languages.keymapTip,
@@ -66,7 +68,7 @@ const bindKeymapToolbar = (root: HTMLElement) => {
             keymapSaveQueue = keymapSaveQueue.then(async () => {
                 try {
                     const data = JSON.parse(JSON.stringify(Constants.SIYUAN_KEYMAP));
-                    const response = await fetchSyncPost("/api/setting/setKeymap", {data});
+                    const response = await fetchSyncPost("/api/setting/setKeymap", {data: keymapPayload(data)});
                     if (response.code !== 0) {
                         throw new Error(response.msg);
                     }
@@ -83,7 +85,17 @@ const bindKeymapToolbar = (root: HTMLElement) => {
 };
 
 /** 快捷键 Tab 挂载（面板页，不走注册表渲染） */
-export const mountKeymapTab = async (root: HTMLElement, keywords?: string) => {
+export const mountKeymapTab = async (root: HTMLElement, keywords?: string, _app?: App, rebuild = false) => {
+    if (rebuild && root.innerHTML !== "") {
+        root.querySelectorAll<HTMLElement>(".config-keymap__row").forEach(row => {
+            const keys = getKeymapBindings(getKeymapItem(window.siyuan.config.keymap, row.dataset.key.split(Constants.ZWSP)));
+            if (JSON.stringify(keys) !== row.dataset.keys) {
+                renderRowBindings(row, keys);
+            }
+        });
+        refreshKeymapBindings(root);
+        return;
+    }
     if (root.innerHTML === "") {
         root.innerHTML = genKeymapTabHtml();
         bindKeymapToolbar(root);
@@ -212,7 +224,7 @@ const genKeymapListHtml = () => {
 
     return `<div class="b3-label file-tree config-keymap config-item" id="keymapList" data-keymap-filter="all">
     <div class="fn__flex">
-        <input id="keymapInput" class="b3-text-field fn__flex-1" placeholder="${window.siyuan.languages.searchPlaceholder}">
+        <input spellcheck="false" id="keymapInput" class="b3-text-field fn__flex-1" placeholder="${window.siyuan.languages.searchPlaceholder}">
         <div class="fn__space"></div>
         <label class="b3-form__icon fn__flex-1 searchByKeyLabel" style="overflow: visible">
             <svg class="b3-form__icon-icon"><use xlink:href="#iconKeymap"></use></svg>
@@ -297,7 +309,7 @@ const buildKeymapPluginCommandHtml = (item: Plugin) => {
     const html: string[] = [];
     for (const command of item.commands) {
         html.push(genKeymapRowHtml(
-            command.langText || (item.i18n ? item.i18n[command.langKey] : "") || command.langKey,
+            String(command.langText || (item.i18n ? item.i18n[command.langKey] : "") || command.langKey),
             pluginKeyPrefix + command.langKey,
             ensurePluginKeymap(item.name, command.langKey, command.hotkey),
         ));
@@ -361,7 +373,7 @@ const bindKeymapList = (root: HTMLElement) => {
         searchKeymapElement.dataset.keymap = "";
         resetKeymapList(keymapListElement);
     });
-    let recording: {row: HTMLElement; element: HTMLElement} | undefined;
+    let recording: { row: HTMLElement; element: HTMLElement } | undefined;
     const outsideRecording = (event: PointerEvent) => {
         if (recording && event.target !== recording.element &&
             !(event.target as HTMLElement).closest(".config-keymap__controls")) {
@@ -420,11 +432,15 @@ const bindKeymapList = (root: HTMLElement) => {
         event.stopPropagation();
         const row = chip.closest<HTMLElement>(".config-keymap__row");
         const menu = new Menu();
-        menu.addItem({label: window.siyuan.languages.keymapPrimary, click: () => {
-            const keys = getRowBindings(row);
-            keys.unshift(keys.splice(index, 1)[0]);
-            saveRow(row, keys);
-        }});
+        menu.addItem({
+            iconHTML: "",
+            label: window.siyuan.languages.keymapPrimary,
+            click: () => {
+                const keys = getRowBindings(row);
+                keys.unshift(keys.splice(index, 1)[0]);
+                saveRow(row, keys);
+            }
+        });
         menu.open({x: event.clientX, y: event.clientY});
     });
     keymapListElement.addEventListener("click", (event) => {
@@ -658,6 +674,11 @@ const refreshKeymapBindings = (root: HTMLElement) => {
             owners.set(normalized, matches);
         }
     }));
+    const agentSend = `general${Constants.ZWSP}agentSend`;
+    const mindmapShortcuts = new Set([
+        `editor${Constants.ZWSP}list${Constants.ZWSP}mindmapAddSibling`,
+        `editor${Constants.ZWSP}list${Constants.ZWSP}mindmapAddChild`,
+    ]);
     rows.forEach(row => {
         const keys = getRowBindings(row);
         const config = getKeymapItem(window.siyuan.config.keymap, row.dataset.key.split(Constants.ZWSP));
@@ -673,7 +694,14 @@ const refreshKeymapBindings = (root: HTMLElement) => {
         const reset = controls.querySelector<HTMLButtonElement>('[data-type="reset"]');
         reset.style.display = changed ? "" : "none";
         reset.tabIndex = changed ? 0 : -1;
-        const conflicts = keys.map(key => (owners.get(normalizeShortcutKey(key, isMac()))?.size || 0) > 1);
+        const conflicts = keys.map(key => Array.from(owners.get(normalizeShortcutKey(key, isMac())) || []).some(other => {
+            if (other === row) {
+                return false;
+            }
+            // AI 输入框和思维导图使用不同的按键作用域，同一默认键不会相互触发。
+            return !(row.dataset.key === agentSend && mindmapShortcuts.has(other.dataset.key) ||
+                other.dataset.key === agentSend && mindmapShortcuts.has(row.dataset.key));
+        }));
         row.dataset.conflict = String(conflicts.some(Boolean));
         row.querySelectorAll<HTMLElement>(".config-keymap__chip").forEach(chip => {
             chip.classList.toggle("config-keymap__chip--conflict", conflicts[Number(chip.dataset.index)]);
@@ -700,19 +728,6 @@ let keymapSaveQueue = Promise.resolve();
 let keymapRevision = 0;
 let savedKeymap: Config.IKeymap | undefined;
 
-const applyKeymap = (data: Config.IKeymap) => {
-    sendUnregisterGlobalShortcut(window.siyuan.ws.app);
-    window.siyuan.config.keymap = data;
-    window.siyuan.ws.app.plugins.forEach(plugin => {
-        plugin.commands.forEach(command => {
-            command.customHotkey = data.plugin?.[plugin.name]?.[command.langKey]?.custom || "";
-        });
-    });
-    updateDockHotkeys();
-    sendGlobalShortcut(window.siyuan.ws.app);
-    syncAppMenuShortcuts(Boolean(document.activeElement?.matches(".config-keymap__record, #searchByKey")));
-};
-
 const saveKeymapRow = (root: HTMLElement, row: HTMLElement, keys: string[], change?: (data: Config.IKeymap) => void) => {
     savedKeymap ||= JSON.parse(JSON.stringify(window.siyuan.config.keymap));
     const data: Config.IKeymap = JSON.parse(JSON.stringify(window.siyuan.config.keymap));
@@ -726,11 +741,16 @@ const saveKeymapRow = (root: HTMLElement, row: HTMLElement, keys: string[], chan
     const revision = ++keymapRevision;
     keymapSaveQueue = keymapSaveQueue.then(async () => {
         try {
-            const response = await fetchSyncPost("/api/setting/setKeymap", {data});
+            const response = await fetchSyncPost("/api/setting/patch", {
+                keymap: keymapRowPatch(row.dataset.key.split(Constants.ZWSP), {
+                    ...item, bindings: item.bindings ? {...item.bindings, priority: item.bindings.priority || null} : undefined,
+                }),
+            });
             if (response.code !== 0) {
                 throw new Error(response.msg);
             }
-            savedKeymap = data;
+            await refreshSettingConfig("keymap");
+            savedKeymap = JSON.parse(JSON.stringify(window.siyuan.config.keymap));
         } catch (error) {
             console.error("Could not save shortcuts:", error);
             if (revision !== keymapRevision) {

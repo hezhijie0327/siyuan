@@ -21,9 +21,16 @@ import type {TSettingTab} from "./setting/tabs";
 import type {App} from "../index";
 import {unmountAssetsTab} from "./assets";
 import {getHostCapabilities} from "../util/hostCapabilities";
+import {unmountWorkspaceStorage} from "./tabs/workspaceStorage";
+/// #if !MOBILE
+import {openNativeSettings} from "./setting/nativeWindow";
+import {getSettingsWindowMode} from "./setting/windowMode";
+import {isSettingsWindow} from "./setting/windowContext";
+import {fitSettingsWindowDialog} from "./setting/windowDialog";
+/// #endif
 
 /// #if !MOBILE
-const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
+export const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
     window.siyuan.dialogs.find((item) => item.element.querySelector(".config__tab-container"))?.destroy();
     let range: Range;
     if (getSelection().rangeCount > 0) {
@@ -33,7 +40,7 @@ const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
     const tabPanels: string[] = [];
     for (const def of getSettingTabDefs()) {
         const isActive = def.id === initialTab;
-        tabListItems.push(`<li data-name="${def.id}" class="b3-list-item${isActive ? " b3-list-item--focus" : ""}${def.hidden ? " fn__none" : ""}"><svg class="b3-list-item__graphic"><use xlink:href="#${def.icon}"></use></svg><span class="b3-list-item__text">${def.title}</span></li>`);
+        tabListItems.push(`<li data-name="${def.id}" tabindex="0" role="button" class="b3-list-item${isActive ? " b3-list-item--focus" : ""}${def.hidden ? " fn__none" : ""}"><svg class="b3-list-item__graphic"><use xlink:href="#${def.icon}"></use></svg><span class="b3-list-item__text">${def.title}</span></li>`);
         tabPanels.push(`<div class="config__tab-container${isActive ? "" : " fn__none"}" data-name="${def.id}"></div>`);
     }
     const settingDialogRef: {element?: HTMLElement} = {};
@@ -45,9 +52,9 @@ const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
                 <svg class="b3-list-item__graphic"><use xlink:href="#iconSettings"></use></svg>
                 <span class="b3-list-item__text">${window.siyuan.languages.config}</span>
             </div>
-            <input placeholder="${window.siyuan.languages.searchPlaceholder}" class="b3-text-field fn__block">
+            <input spellcheck="false" placeholder="${window.siyuan.languages.searchPlaceholder}" class="b3-text-field fn__block">
         </div>
-        <ul class="config__tab-scroll">
+        <ul class="config__tab-scroll" tabindex="-1">
             ${tabListItems.join("")}
         </ul>
     </div>
@@ -69,13 +76,20 @@ const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
             }
             clearSyncTabElement();
             clearAccessTabElement();
+            const appRoot = settingDialogRef.element?.querySelector<HTMLElement>('.config__tab-container[data-name="app"]');
+            if (appRoot) {
+                unmountWorkspaceStorage(appRoot);
+            }
             if (range) {
                 focusByRange(range);
+            }
+            if (isSettingsWindow()) {
+                window.close();
             }
         },
     });
     settingDialogRef.element = dialog.element;
-    const disposeDrag = initSettingDrag(dialog.element);
+    const disposeDrag = isSettingsWindow() ? undefined : initSettingDrag(dialog.element);
     dialog.element.setAttribute("data-key", Constants.DIALOG_SETTING);
 
     const tabWrap = dialog.element.querySelector(".config__tab-wrap") as HTMLElement;
@@ -88,22 +102,53 @@ const openSettingDialog = (app: App, initialTab: TSettingTab = "editor") => {
             const tabId = item.getAttribute("data-name") as TSettingTab;
             switchSettingTab(dialog.element, app, tabId);
         });
+        item.addEventListener("keydown", (event: KeyboardEvent) => {
+            if (!event.isComposing && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                event.stopPropagation();
+                (item as HTMLElement).click();
+            }
+        });
     });
     switchSettingTab(dialog.element, app, initialTab);
+    if (isSettingsWindow()) {
+        fitSettingsWindowDialog(dialog);
+    }
     return dialog;
 };
 /// #endif
+
+export const openPluginSetting = (app: App) => {
+    /// #if MOBILE
+    openMobileSetting(app);
+    /// #else
+    return openSettingDialog(app);
+    /// #endif
+};
 
 export const openSetting = (app: App, tab?: TSettingTab) => {
     if (tab === "bazaar" && !isBazaarAvailable()) {
         return;
     }
-    if (tab === "export" && !getHostCapabilities().importExport) {
+    if (tab === "export" && !getHostCapabilities().documentImportExport) {
         return;
     }
     /// #if MOBILE
     openMobileSetting(app, tab);
     /// #else
+    /// #if !BROWSER
+    if (!isSettingsWindow() && getSettingsWindowMode() === 1) {
+        void openNativeSettings(app, {tab});
+        return;
+    }
+    /// #endif
+    if (isSettingsWindow()) {
+        const dialog = window.siyuan.dialogs.find(item => item.element.getAttribute("data-key") === Constants.DIALOG_SETTING);
+        if (dialog) {
+            switchSettingTab(dialog.element, app, tab || "editor");
+            return dialog;
+        }
+    }
     return openSettingDialog(app, tab);
     /// #endif
 };
@@ -152,6 +197,12 @@ export const openBazaarReadme = async (app: App, bazaarType: TBazaarType, itemNa
         return;
     }
 
+    /// #if !BROWSER && !MOBILE
+    if (!isSettingsWindow() && getSettingsWindowMode() === 1) {
+        await openNativeSettings(app, {tab: "bazaar", readme: {type: bazaarType, from, resource}});
+        return;
+    }
+    /// #endif
     openSetting(app, "bazaar");
     await withMountedBazaar(({bazaar, renderReadme}) => {
         bazaar.switchBazaarTab(app, bazaarType, from);

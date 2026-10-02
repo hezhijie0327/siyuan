@@ -6,7 +6,6 @@ import {
     getEntryCatalogChildren,
     getEntryCatalogNode,
     getDockEntryKey,
-    getEntryOrderParents,
     getEntryParentPath,
     getEntryPaths,
     isEntryCatalogNodeConfigurable,
@@ -14,6 +13,8 @@ import {
     refreshTopBarCatalog,
     TOP_BAR_ROOT_PATH,
     STATUS_BAR_ROOT_PATH,
+    WINDOW_TOP_BAR_ROOT_PATH,
+    SLASH_MENU_ROOT_PATH,
 } from "./catalog";
 import {
     mergeEntryOrderPreservingUnknown,
@@ -29,7 +30,9 @@ import {syncDockBarVisibility} from "../../layout/dock/barVisibility";
 import {genUUID} from "../../util/genID";
 import {
     applyDockEntryOrderSnapshot,
+    DOCK_ORDER_SCOPES,
     getCurrentDockEntryOrderSnapshot,
+    getDefaultDockEntryOrderSnapshot,
     getDockEntryOrderSnapshot,
     getDockOrderScopePosition,
     isDockOrderScope,
@@ -37,7 +40,7 @@ import {
     mergeDockEntryOrderSnapshot,
 } from "./dockOrder";
 
-export const ENTRY_VISIBILITY_VERSION = 5;
+export const ENTRY_VISIBILITY_VERSION = 6;
 export const ENTRY_PROFILE_SIMPLE = "simple";
 export const ENTRY_PROFILE_FULL = "full";
 export type TEntryVisibilityTemplate = typeof ENTRY_PROFILE_SIMPLE | typeof ENTRY_PROFILE_FULL;
@@ -61,7 +64,9 @@ const getTemplateVisibility = (path: string, template: TEntryVisibilityTemplate)
 
 export const isEntryVisible = (path: string): boolean => {
     /// #if MOBILE
-    if (!path.startsWith(`${TOOLBAR_ENTRY_ROOT_PATH}.`)) {
+    if (!path.startsWith(`${TOOLBAR_ENTRY_ROOT_PATH}.`) &&
+        path !== SLASH_MENU_ROOT_PATH && !path.startsWith(`${SLASH_MENU_ROOT_PATH}.`) &&
+        path !== "editor.image" && !path.startsWith("editor.image.")) {
         return true;
     }
     /// #endif
@@ -97,8 +102,12 @@ export const createEntryProfileSnapshot = (template: TEntryVisibilityTemplate) =
 };
 
 export const getEntryOrder = (parentPath: string, profile = getActiveEntryProfile()) => {
-    if (isDockOrderScope(parentPath)) {
-        return mergeDockEntryOrderSnapshot(getDockEntryOrderSnapshot(), profile?.orders)[parentPath];
+    if (parentPath === "dock" || isDockOrderScope(parentPath)) {
+        const current = getDockEntryOrderSnapshot();
+        const snapshot = mergeDockEntryOrderSnapshot(
+            profile ? getDefaultDockEntryOrderSnapshot(current) : current, profile?.orders,
+        );
+        return parentPath === "dock" ? DOCK_ORDER_SCOPES.flatMap(scope => snapshot[scope]) : snapshot[parentPath];
     }
     const nodes = getEntryCatalogChildren(parentPath) || [];
     const defaultOrder = nodes.map((item) => item.key);
@@ -113,15 +122,7 @@ export const getEntryOrder = (parentPath: string, profile = getActiveEntryProfil
 };
 
 export const createEntryOrderSnapshot = (current = false) => {
-    refreshDockCatalog(window.siyuan.ws?.app?.plugins || []);
-    const orders = getEntryOrderParents().reduce<Record<string, string[]>>((result, parentPath) => {
-        const nodes = getEntryCatalogChildren(parentPath) || [];
-        result[parentPath] = current
-            ? getEntryOrder(parentPath)
-            : nodes.map((item) => item.key);
-        return result;
-    }, {});
-    return {...orders, ...getDockEntryOrderSnapshot()};
+    return current ? JSON.parse(JSON.stringify(getActiveEntryProfile()?.orders || {})) as Record<string, string[]> : {};
 };
 
 const cloneEntryVisibilityConfig = () => JSON.parse(JSON.stringify(
@@ -149,7 +150,7 @@ const getWritableEntryProfile = (config: Config.IEntryVisibility) => {
         id: genUUID(),
         name: uniqueEntryProfileName(window.siyuan.languages.entryCustomProfile, config.profiles),
         entries: createEntryProfileSnapshot(template),
-        orders: createEntryOrderSnapshot(true),
+        orders: {},
     };
     config.profiles.push(profile);
     config.active = profile.id;
@@ -356,9 +357,11 @@ export const applyMenuEntryVisibility = (menuElement: HTMLElement) => {
 export const applyDockEntryVisibility = () => {
     /// #if !MOBILE
     refreshDockCatalog(window.siyuan.ws?.app?.plugins || []);
+    const profile = getActiveEntryProfile();
+    const current = getDockEntryOrderSnapshot();
     applyDockEntryOrderSnapshot(mergeDockEntryOrderSnapshot(
-        getDockEntryOrderSnapshot(),
-        getActiveEntryProfile()?.orders,
+        profile ? getDefaultDockEntryOrderSnapshot(current) : current,
+        profile?.orders,
     ), undefined, (scope, item, previousItem) => {
         const position = getDockOrderScopePosition(scope);
         const dock = position.startsWith("Left")
@@ -398,7 +401,8 @@ export const applyToolbarEntryVisibility = (toolbarElement: HTMLElement) => {
     const result = resolveToolbarItems(children, {
         getKey: resolveKey,
         isSeparator: (item) => item.classList.contains("protyle-toolbar__divider"),
-        isVisible: (key) => isEntryVisible(`${TOOLBAR_ENTRY_ROOT_PATH}.${key}`),
+        isVisible: (key) => isEntryVisible(`${TOOLBAR_ENTRY_ROOT_PATH}.${key}`) &&
+            children.some(item => resolveKey(item) === key && item.dataset.entryUnavailable !== "true"),
         order: getEntryOrder(TOOLBAR_ENTRY_ROOT_PATH),
     });
     result.ordered.forEach((item) => toolbarElement.append(item));
@@ -448,6 +452,24 @@ export const applyTopBarEntryVisibility = () => {
     /// #endif
 };
 
+export const applyWindowTopBarEntryVisibility = () => {
+    /// #if !MOBILE
+    const toolbar = document.querySelector(".toolbar__window");
+    if (!toolbar) {
+        return;
+    }
+    const children = Array.from(toolbar.children) as HTMLElement[];
+    reorderEntrySlots(children, getEntryOrder(WINDOW_TOP_BAR_ROOT_PATH), item => item.dataset.windowTopbarEntry)
+        .forEach(item => toolbar.append(item));
+    children.forEach(item => {
+        const key = item.dataset.windowTopbarEntry;
+        if (key && getEntryCatalogNode(`${WINDOW_TOP_BAR_ROOT_PATH}.${key}`)) {
+            item.classList.toggle("fn__none", !isEntryVisible(`${WINDOW_TOP_BAR_ROOT_PATH}.${key}`));
+        }
+    });
+    /// #endif
+};
+
 export const applyStatusBarEntryVisibility = () => {
     /// #if !MOBILE
     const status = document.getElementById("status");
@@ -478,6 +500,7 @@ const applyEntryVisibilityLocal = (config: Config.IEntryVisibility) => {
     /// #if !MOBILE
     window.siyuan.menus?.menu?.remove();
     applyTopBarEntryVisibility();
+    applyWindowTopBarEntryVisibility();
     applyStatusBarEntryVisibility();
     applyDockEntryVisibility();
     document.querySelectorAll<HTMLElement>(".protyle-toolbar").forEach(applyToolbarEntryVisibility);

@@ -4,7 +4,7 @@ import {Constants} from "../../constants";
 /// #if !BROWSER
 import {ipcRenderer} from "electron";
 /// #endif
-import {getDefaultSubType, getDefaultType} from "../../search/getDefault";
+import {getDefaultSubType, getDefaultType, normalizeSearchTypes} from "../../search/getDefault";
 import {hideMessage, showMessage} from "../../dialog/message";
 import {isEncryptedBox, isSiYuanUriProtocol} from "../../util/pathName";
 import {isBrowser} from "../../util/functions";
@@ -63,7 +63,7 @@ export const isPhablet = () => {
 };
 
 export const saveExportFile = async (uri: string, msgId?: string): Promise<TSaveExportFileResult> => {
-    if (!getHostCapabilities().importExport) {
+    if (!getHostCapabilities().documentImportExport) {
         if (msgId) {
             hideMessage(msgId);
         }
@@ -73,6 +73,23 @@ export const saveExportFile = async (uri: string, msgId?: string): Promise<TSave
         return {status: "error"};
     }
     /// #if !BROWSER
+    if (getHostCapabilities().remoteKernel) {
+        let result: TSaveExportFileResult;
+        try {
+            result = await ipcRenderer.invoke(Constants.SIYUAN_GET, {cmd: "saveRemoteExport", uri});
+        } catch (error) {
+            result = {status: "error"};
+        }
+        if (msgId) {
+            hideMessage(msgId);
+        }
+        if (result.status === "success") {
+            showMessage(window.siyuan.languages.exported);
+        } else if (result.status === "error") {
+            showMessage(window.siyuan.languages.exportFileSaveFailed, 0, "error");
+        }
+        return result;
+    }
     let saveErrorMsgId: string | undefined;
     try {
         const resolved = new URL(uri, `${location.origin}/`);
@@ -198,18 +215,22 @@ export const saveExportFile = async (uri: string, msgId?: string): Promise<TSave
     /// #endif
 };
 
-export const readText = () => {
+export const readText = (silent = false) => {
     if (isInAndroid()) {
         return window.JSAndroid.readClipboard();
     } else if (isInHarmony()) {
         return window.JSHarmony.readClipboard();
     }
     if (typeof navigator.clipboard === "undefined") {
-        alert(window.siyuan.languages.clipboardPermissionDenied);
+        if (!silent) {
+            alert(window.siyuan.languages.clipboardPermissionDenied);
+        }
         return "";
     }
     return navigator.clipboard.readText().catch(() => {
-        alert(window.siyuan.languages.clipboardPermissionDenied);
+        if (!silent) {
+            alert(window.siyuan.languages.clipboardPermissionDenied);
+        }
     }) || "";
 };
 
@@ -229,7 +250,7 @@ export const getLocalFiles = async () => {
         }
     } else {
         const xmlString = await fetchSyncPost("/api/clipboard/readFilePaths", {});
-        if (xmlString.data.length > 0) {
+        if (xmlString.code === 0 && Array.isArray(xmlString.data) && xmlString.data.length > 0) {
             localFiles = xmlString.data;
         }
     }
@@ -530,6 +551,10 @@ export const isIPhone = () => {
     return navigator.userAgent.indexOf("iPhone") > -1;
 };
 
+export const isAndroid = () => {
+    return /Android/i.test(navigator.userAgent);
+};
+
 export const isIOSDevice = () => {
     return isIOSPlatform(navigator);
 };
@@ -759,6 +784,7 @@ export const getLocalStorage = (cb: () => void) => {
             version: 1,
             tabs: [],
         };
+        defaultStorage["local-mobile-bars"] = {autoHide: true};
         defaultStorage[Constants.LOCAL_MOBILE_BOTTOM_BAR] = {
             version: 1,
             actions: ["documents", "search", "newDoc", "tabs"],
@@ -797,20 +823,22 @@ export const getLocalStorage = (cb: () => void) => {
         defaultStorage[Constants.LOCAL_ZOOM] = 1;
         defaultStorage[Constants.LOCAL_MOVE_PATH] = {keys: [], k: ""};
         defaultStorage[Constants.LOCAL_RECENT_DOCS] = {type: "viewedAt"};   // TRecentDocsSort
+        defaultStorage[Constants.LOCAL_AV_CALENDAR_MODES] = {};
 
         [Constants.LOCAL_EXPORTIMG, Constants.LOCAL_EXPORTPATH, Constants.LOCAL_SEARCHKEYS, Constants.LOCAL_PDFTHEME, Constants.LOCAL_BAZAAR,
             Constants.LOCAL_EXPORTWORD, Constants.LOCAL_EXPORTPDF, Constants.LOCAL_DOCINFO, Constants.LOCAL_MOBILE_TABS,
-            Constants.LOCAL_MOBILE_BOTTOM_BAR, Constants.LOCAL_MOBILE_SIDE_PANEL,
+            Constants.LOCAL_MOBILE_BOTTOM_BAR, Constants.LOCAL_MOBILE_SIDE_PANEL, "local-mobile-bars",
             Constants.LOCAL_FONTSTYLES,
             Constants.LOCAL_SEARCHDATA, Constants.LOCAL_ZOOM, Constants.LOCAL_LAYOUTS,
             Constants.LOCAL_PLUGINTOPUNPIN, Constants.LOCAL_SEARCHASSET, Constants.LOCAL_FLASHCARD,
             Constants.LOCAL_DIALOGPOSITION, Constants.LOCAL_SEARCHUNREF, Constants.LOCAL_HISTORY,
             Constants.LOCAL_OUTLINE, Constants.LOCAL_FILEPOSITION, Constants.LOCAL_FILESPATHS, Constants.LOCAL_IMAGES,
             Constants.LOCAL_PLUGIN_DOCKS, Constants.LOCAL_EMOJIS, Constants.LOCAL_MOVE_PATH, Constants.LOCAL_RECENT_DOCS,
-            Constants.LOCAL_CLOSED_TABS].forEach((key) => {
-            if (typeof response.data[key] === "string") {
+            Constants.LOCAL_CLOSED_TABS, Constants.LOCAL_AV_CALENDAR_MODES].forEach((key) => {
+            const value = response.data[key];
+            if (typeof value === "string") {
                 try {
-                    const parseData = JSON.parse(response.data[key]);
+                    const parseData = JSON.parse(value);
                     if (typeof parseData === "number") {
                         // https://github.com/siyuan-note/siyuan/issues/8852 Object.assign 会导致 number to Number
                         window.siyuan.storage[key] = parseData;
@@ -824,14 +852,18 @@ export const getLocalStorage = (cb: () => void) => {
                 window.siyuan.storage[key] = defaultStorage[key];
             }
         });
+        // 只使用当前支持的缩放档位，确保窗口初始化能取得对应的按钮位置。
+        if (!Constants.SIZE_ZOOM.some(item => item.zoom === window.siyuan.storage[Constants.LOCAL_ZOOM])) {
+            window.siyuan.storage[Constants.LOCAL_ZOOM] = defaultStorage[Constants.LOCAL_ZOOM];
+        }
+        window.siyuan.storage[Constants.LOCAL_SEARCHDATA].types = normalizeSearchTypes(window.siyuan.storage[Constants.LOCAL_SEARCHDATA].types);
         // 搜索数据添加 replaceTypes 兼容
         if (!window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes ||
             Object.keys(window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes).length === 0) {
             window.siyuan.storage[Constants.LOCAL_SEARCHDATA].replaceTypes = Object.assign({}, Constants.SIYUAN_DEFAULT_REPLACETYPES);
         }
-        // Migrate stored search data to include subTypes when absent
-        if (!window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes ||
-            Object.keys(window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes).length === 0) {
+        // 缺少子类型配置时补充默认值。
+        if (!window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes) {
             window.siyuan.storage[Constants.LOCAL_SEARCHDATA].subTypes = getDefaultSubType();
         }
         const closedTabs = window.siyuan.storage[Constants.LOCAL_CLOSED_TABS];
@@ -906,7 +938,7 @@ const sanitizeFilesPaths = (filesPaths: IFilesPath[]) => {
     return filesPaths.filter((item) => !isEncryptedBox(item.notebookId));
 };
 
-export const setStorageVal = (key: string, val: any, cb?: () => void) => {
+export const setStorageVal = (key: string, val: any, cb?: () => void, timeout = 0) => {
     if (window.siyuan.config.readonly || window.siyuan.isPublish) {
         return;
     }
@@ -921,7 +953,7 @@ export const setStorageVal = (key: string, val: any, cb?: () => void) => {
     if ([Constants.LOCAL_SEARCHDATA, Constants.LOCAL_FILESPATHS, Constants.LOCAL_CLOSED_TABS].includes(key)) {
         window.siyuan.storage[key] = storageVal;
     }
-    fetchPost("/api/storage/setLocalStorageVal", {
+    return fetchPost("/api/storage/setLocalStorageVal", {
         app: Constants.SIYUAN_APPID,
         key,
         val: storageVal,
@@ -929,7 +961,7 @@ export const setStorageVal = (key: string, val: any, cb?: () => void) => {
         if (cb) {
             cb();
         }
-    });
+    }, undefined, undefined, undefined, timeout);
 };
 
 export const initWindowOpenOverride = (app: App, openExternal?: (url: string) => void) => {

@@ -29,7 +29,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/88250/gulu"
 	"github.com/88250/lute/ast"
 	"github.com/88250/lute/parse"
 	"github.com/gin-gonic/gin"
@@ -129,6 +128,7 @@ func testGetBlockInfoRecovery(t *testing.T, name string) {
 	request := httptest.NewRequest(http.MethodPost, "/api/block/getBlockInfo", strings.NewReader(string(body)))
 	request.Header.Set("Content-Type", "application/json")
 	engine.ServeHTTP(recorder, request)
+	requireAPIContract(t, http.MethodPost, "/api/block/getBlockInfo", recorder)
 	var response struct {
 		Code int `json:"code"`
 		Data struct {
@@ -158,21 +158,6 @@ func testGetBlockInfoRecovery(t *testing.T, name string) {
 	}
 }
 
-func TestParseBlockRefStringArrayEmptyHandling(t *testing.T) {
-	arg := map[string]any{"ids": []any{}}
-
-	requiredResult := gulu.Ret.NewResult()
-	if _, ok := parseBlockRefStringArray(arg, "ids", requiredResult, true); ok || requiredResult.Code != -1 {
-		t.Fatalf("expected an empty required array to be rejected, got code %d", requiredResult.Code)
-	}
-
-	optionalResult := gulu.Ret.NewResult()
-	values, ok := parseBlockRefStringArray(arg, "ids", optionalResult, false)
-	if !ok || optionalResult.Code != 0 || len(values) != 0 {
-		t.Fatalf("expected an empty optional array to be accepted, got code %d and values %v", optionalResult.Code, values)
-	}
-}
-
 func TestCheckBlockRefRejectsDeletedIDsOutsideIDs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -195,6 +180,10 @@ func TestCheckBlockRefRejectsDeletedIDsOutsideIDs(t *testing.T) {
 }
 
 func TestFilterBlockAndRefIDsByPublishAccess(t *testing.T) {
+	previousConf := model.Conf
+	model.Conf = model.NewAppConf()
+	model.Conf.Sync = conf.NewSync()
+	t.Cleanup(func() { model.Conf = previousConf })
 	const (
 		boxID             = "20260724000000-boxid01"
 		publicID          = "20260724000001-public1"
@@ -264,6 +253,10 @@ func TestFilterBlockAndRefIDsByPublishAccess(t *testing.T) {
 }
 
 func TestGetBlockInfoPublishAccess(t *testing.T) {
+	previousConf := model.Conf
+	model.Conf = model.NewAppConf()
+	model.Conf.Sync = conf.NewSync()
+	t.Cleanup(func() { model.Conf = previousConf })
 	const (
 		boxID             = "20260806000020-box0020"
 		protectedID       = "20260806000021-protect"
@@ -377,6 +370,10 @@ type docBlocksOrdersResponse struct {
 }
 
 func TestBlockPublishAccessGuards(t *testing.T) {
+	previousConf := model.Conf
+	model.Conf = model.NewAppConf()
+	model.Conf.Sync = conf.NewSync()
+	t.Cleanup(func() { model.Conf = previousConf })
 	const (
 		boxID             = "20260724000000-boxid03"
 		publicID          = "20260724000020-public3"

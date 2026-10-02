@@ -3,7 +3,9 @@ import {escapeHtml} from "../../util/escape";
 import * as path from "path";
 /// #endif
 import {hideMessage, showMessage} from "../../dialog/message";
-import {fetchPost} from "../../util/fetch";
+import {fetchPost, fetchSyncPost} from "../../util/fetch";
+import {renderExportJSEmbeds} from "./jsEmbed";
+import {ContractFormData} from "../../util/contractFormData";
 import {Dialog} from "../../dialog";
 import {addScript} from "../util/addScript";
 import {isMobile} from "../../util/functions";
@@ -12,13 +14,9 @@ import {highlightRender, lineNumberRender} from "../render/highlightRender";
 import {processRender} from "../util/processCode";
 import {isInAndroid, isIPad, isIPhone, isSafari, saveExportFile, setStorageVal} from "../util/compatibility";
 import {useShell} from "../../util/pathName";
-import {getHostCapabilities} from "../../util/hostCapabilities";
+import {getHostCapabilities, sanitizeKernelHTML} from "../../util/hostCapabilities";
 import {copyPNGByLink, writePNGBlob} from "../../menus/util";
-
-// WebKit/Chromium 会拒绝宽度或高度超过此限制的 canvas，导致生成空白图像。
-// html-to-image 默认会进行限制，而 modern-screenshot 不会（maximumCanvasSize
-// 默认为 0，即无限制），因此处理长文档时需要显式传入该参数。
-const MAX_CANVAS_SIZE = 16384;
+import {getExportImageSize, isExportImageSizeSupported, updateExportImageLayout} from "./imageLayout";
 
 const IMAGE_PLACEHOLDER = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -35,7 +33,7 @@ export const afterExport = (exportPath: string, msgId: string) => {
 };
 
 export const exportImage = (id: string, copyOnly = false) => {
-    if (!getHostCapabilities().importExport) {
+    if (!getHostCapabilities().documentImportExport) {
         return;
     }
     const exportDialog = new Dialog({
@@ -76,6 +74,7 @@ export const exportImage = (id: string, copyOnly = false) => {
         width: isMobile() ? "92vw" : "990px",
         height: "70vh",
         resizeCallback() {
+            updateExportImageLayout(exportDialog.element.querySelector(".export-img"));
             previewElement.querySelectorAll(".code-block .protyle-linenumber__rows").forEach((item: HTMLElement) => {
                 if ((item.nextElementSibling as HTMLElement).style.wordBreak === "break-word") {
                     lineNumberRender(item.parentElement);
@@ -96,6 +95,7 @@ export const exportImage = (id: string, copyOnly = false) => {
     let outputting = false;
     let titleRefreshTimer: number;
     let titleComposing = false;
+    let previewRevision = 0;
 
     const setActionDisabled = (disabled: boolean) => {
         cancelButton.disabled = disabled;
@@ -103,9 +103,7 @@ export const exportImage = (id: string, copyOnly = false) => {
         exportButton.disabled = disabled;
     };
     const uploadImageBlob = (blob: Blob) => {
-        const formData = new FormData();
-        formData.append("file", blob, imageName);
-        formData.append("type", "image/png");
+        const formData = new ContractFormData({file: new File([blob], imageName, {type: blob.type}), type: "image/png"});
         return new Promise<IWebSocketData>((resolve) => {
             fetchPost("/api/export/exportAsFile", formData, (response) => {
                 resolve(response);
@@ -119,7 +117,7 @@ export const exportImage = (id: string, copyOnly = false) => {
             if (objectElement) {
                 const res = await fetch(objectElement.getAttribute("data"));
                 const response = await res.text();
-                objectElement.insertAdjacentHTML("beforebegin", response as string);
+                objectElement.insertAdjacentHTML("beforebegin", sanitizeKernelHTML(response));
                 objectElement.remove();
             }
         }
@@ -132,21 +130,38 @@ export const exportImage = (id: string, copyOnly = false) => {
         await new Promise((resolve) => {
             setTimeout(resolve, Constants.TIMEOUT_LOAD);
         });
+        await document.fonts.ready;
+        await Promise.all(Array.from(previewElement.querySelectorAll("img")).map(item => {
+            item.loading = "eager";
+            return item.decode().catch(() => {});
+        }));
+        updateExportImageLayout(exportDialog.element.querySelector(".export-img"));
+        const contentElement = exportDialog.element.querySelector<HTMLElement>(".b3-dialog__content");
+        const size = getExportImageSize(contentElement);
+        const pixelRatio = window.devicePixelRatio || 1;
+        if (!isExportImageSizeSupported(size, pixelRatio)) {
+            throw new Error(window.siyuan.languages.exportImageTooLarge);
+        }
+        // 截图克隆完整内容区，预览窗口保持原有宽度和滚动位置。
+        const style = {boxSizing: "border-box", overflow: "hidden"};
         if (isIPhone() || isIPad() || isSafari()) {
             // modern-screenshot 通过缓存默认样式提高 WebKit/WKWebView 环境下的导出性能。
             await addScript(`${Constants.PROTYLE_CDN}/js/modern-screenshot.min.js?v=4.6.6`, "protyleModernScreenshot");
             return window.modernScreenshot.domToBlob(
-                exportDialog.element.querySelector(".b3-dialog__content") as HTMLElement, {
+                contentElement, {
+                    ...size,
+                    style,
                     type: "image/png",
-                    // 默认为 1，会导致高清屏上导出的图片比 html-to-image 模糊
-                    scale: window.devicePixelRatio || 1,
-                    maximumCanvasSize: MAX_CANVAS_SIZE,
+                    scale: pixelRatio,
                     fetch: {placeholderImage: IMAGE_PLACEHOLDER}
                 });
         }
         await addScript(`${Constants.PROTYLE_CDN}/js/html-to-image.min.js?v=1.11.13`, "protyleHtml2image");
         return window.htmlToImage.toBlob(
-            exportDialog.element.querySelector(".b3-dialog__content") as HTMLElement, {
+            contentElement, {
+                ...size,
+                style,
+                pixelRatio,
                 imagePlaceholder: IMAGE_PLACEHOLDER,
                 onImageErrorHandler: (event: Event) => {
                     (event.target as HTMLImageElement).src = IMAGE_PLACEHOLDER;
@@ -160,15 +175,6 @@ export const exportImage = (id: string, copyOnly = false) => {
         outputting = true;
         setActionDisabled(true);
         const msgId = showMessage(window.siyuan.languages.exporting, 0);
-        const containerElement = exportDialog.element.querySelector(".b3-dialog__container") as HTMLElement;
-        const oldHeight = containerElement.style.height;
-        containerElement.style.height = "";
-        /// #if MOBILE
-        containerElement.style.width = "100vw";
-        /// #endif
-        const contentElement = exportDialog.element.querySelector(".b3-dialog__content") as HTMLElement;
-        const oldOverflow = contentElement.style.overflow;
-        contentElement.style.overflow = "hidden";
         if (!copyOnly) {
             setStorageVal(Constants.LOCAL_EXPORTIMG, window.siyuan.storage[Constants.LOCAL_EXPORTIMG]);
         }
@@ -208,8 +214,6 @@ export const exportImage = (id: string, copyOnly = false) => {
         } finally {
             outputting = false;
             if (document.body.contains(exportDialog.element)) {
-                containerElement.style.height = oldHeight;
-                contentElement.style.overflow = oldOverflow;
                 setActionDisabled(false);
             }
         }
@@ -225,18 +229,20 @@ export const exportImage = (id: string, copyOnly = false) => {
         outputImage("export");
     });
     const refreshExportPreview = () => {
+        const revision = ++previewRevision;
         setActionDisabled(true);
         if (!exportDialog.element.querySelector(".fn__loading")) {
             exportButton.parentElement.insertAdjacentHTML("afterend", '<div class="fn__loading"><img height="128px" width="128px" src="stage/loading-pure.svg"></div>');
         }
         fetchPost("/api/export/exportPreviewHTML", {
             id,
+            keepJSEmbed: true,
             keepFold: foldElement.checked,
             image: true,
             addTitle: addTitleElement.checked,
             customTitle: customTitleElement.value,
         }, (response) => {
-            refreshPreview(response);
+            refreshPreview(response, revision);
         });
     };
     addTitleElement.addEventListener("change", () => {
@@ -273,15 +279,17 @@ export const exportImage = (id: string, copyOnly = false) => {
         watermarkPreviewElement.innerHTML = "";
         if (watermarkElement.checked) {
             if (window.siyuan.config.export.imageWatermarkDesc) {
-                watermarkPreviewElement.innerHTML = window.siyuan.config.export.imageWatermarkDesc;
+                watermarkPreviewElement.innerHTML = sanitizeKernelHTML(window.siyuan.config.export.imageWatermarkDesc);
             } else if (window.siyuan.config.export.imageWatermarkStr) {
                 if (window.siyuan.config.export.imageWatermarkStr.startsWith("http")) {
                     watermarkPreviewElement.setAttribute("style", `background-image: url(${window.siyuan.config.export.imageWatermarkStr});background-repeat: repeat;position: absolute;top: 0;left: 0;width: 100%;height: 100%;border-radius: var(--b3-border-radius-b);`);
                 } else {
                     await addScript(`${Constants.PROTYLE_CDN}/js/html-to-image.min.js?v=1.11.13`, "protyleHtml2image");
-                    const width = Math.max(exportDialog.element.querySelector(".export-img").clientWidth / 3, 150);
+                    const imageElement = exportDialog.element.querySelector(".export-img");
+                    const contentElement = exportDialog.element.querySelector(".b3-dialog__content");
+                    const width = Math.max(Math.min(imageElement.clientWidth, contentElement.clientWidth) / 3, 150);
                     watermarkPreviewElement.setAttribute("style", `width: ${width}px;height: ${width}px;display: flex;justify-content: center;align-items: center;color: var(--b3-border-color);font-size: 14px;`);
-                    watermarkPreviewElement.innerHTML = `<div style="transform: rotate(-45deg)">${window.siyuan.config.export.imageWatermarkStr}</div>`;
+                    watermarkPreviewElement.innerHTML = sanitizeKernelHTML(`<div style="transform: rotate(-45deg)">${window.siyuan.config.export.imageWatermarkStr}</div>`);
                     const canvas = await window.htmlToImage.toCanvas(watermarkPreviewElement);
                     watermarkPreviewElement.innerHTML = "";
                     watermarkPreviewElement.setAttribute("style", `background-image: url(${canvas.toDataURL("image/png")});background-repeat: repeat;position: absolute;top: 0;left: 0;width: 100%;height: 100%;border-radius: var(--b3-border-radius-b);`);
@@ -291,25 +299,38 @@ export const exportImage = (id: string, copyOnly = false) => {
             watermarkPreviewElement.removeAttribute("style");
         }
     };
-    const refreshPreview = async (response: IWebSocketData) => {
-        previewElement.innerHTML = response.data.content;
+    const refreshPreview = async (response: IWebSocketData, revision: number) => {
+        if (revision !== previewRevision) {
+            return;
+        }
+        previewElement.innerHTML = sanitizeKernelHTML(response.data.content);
         previewElement.setAttribute("data-doc-type", response.data.type || "NodeDocument");
         Object.keys(response.data.attrs).forEach(key => {
+            if (getHostCapabilities().remoteKernel && !key.startsWith("custom-") && key !== "style") {
+                return;
+            }
             previewElement.setAttribute(key, response.data.attrs[key]);
         });
+        await renderExportJSEmbeds(previewElement, {
+            disabled: window.siyuan.config.system.safeMode || getHostCapabilities().remoteKernel,
+            disabledTip: window.siyuan.languages.safeModeJSTip,
+            rootID: id,
+            headingMode: window.siyuan.config.editor.headingEmbedMode,
+        }, fetchSyncPost);
+        if (revision !== previewRevision) {
+            return;
+        }
         previewElement.querySelectorAll(".code-block").forEach(item => {
             item.setAttribute("linewrap", "true");
         });
         processRender(previewElement);
         highlightRender(previewElement);
-        previewElement.querySelectorAll("table").forEach((item: HTMLElement) => {
-            if (item.clientWidth > item.parentElement.clientWidth) {
-                item.setAttribute("style", `margin-bottom:${item.parentElement.clientWidth * item.clientHeight / item.clientWidth - item.parentElement.clientHeight + 1}px;transform: scale(${item.parentElement.clientWidth / item.clientWidth});transform-origin: top left;`);
-                item.parentElement.style.overflow = "hidden";
-            }
-        });
+        updateExportImageLayout(exportDialog.element.querySelector(".export-img"));
 
         await updateWatermark();
+        if (revision !== previewRevision) {
+            return;
+        }
         exportDialog.element.querySelector(".fn__loading")?.remove();
         if (copyOnly) {
             await outputImage("copy");
@@ -319,12 +340,13 @@ export const exportImage = (id: string, copyOnly = false) => {
     };
     fetchPost("/api/export/exportPreviewHTML", {
         id,
+        keepJSEmbed: true,
         keepFold: foldElement.checked,
         image: true,
         addTitle: addTitleElement.checked,
         customTitle: customTitleElement.value,
     }, (response) => {
         imageName = response.data.name + ".png";
-        refreshPreview(response);
+        refreshPreview(response, 0);
     });
 };

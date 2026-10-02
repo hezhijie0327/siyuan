@@ -1,4 +1,8 @@
+import {escapeHtmlTextAndAttr} from "../../util/escape";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
+import * as dayjs from "dayjs";
+import {restoreInlineElementBoundaryHTML} from "../util/inlineElementBoundary";
+import {getEditorTransaction} from "../util/transactionContract";
 import {
     focusBlock,
     focusByWbr,
@@ -20,7 +24,9 @@ import {
 } from "./getBlock";
 import {Constants} from "../../constants";
 import {blockRender} from "../render/blockRender";
+import {renderEmbedHeadings} from "../render/embedHeading";
 import {processRender} from "../util/processCode";
+import {renderImageDisplay} from "../render/imageDisplay";
 import {highlightRender} from "../render/highlightRender";
 import {hasClosestBlock, hasClosestByAttribute, hasTopClosestByAttribute, isInEmbedBlock} from "../util/hasClosest";
 import {zoomOut} from "../../menus/protyle";
@@ -34,11 +40,11 @@ import {cancelSB, genEmptyElement, genSBElement, refreshSbResize} from "../../bl
 import {hideElements} from "../ui/hideElements";
 import {reloadProtyle} from "../util/reload";
 import {countBlockWord} from "../../layout/status";
-import {isPaidUser, needSubscribe} from "../../util/needSubscribe";
 import {resize} from "../util/resize";
 import {scrollCenter} from "../../util/highlightById";
 import {consumeGutterFoldRestore} from "../ui/gutterVisibility";
 import {setFold} from "../util/blockFold";
+import {refreshHeadingFoldIndicators} from "../util/headingFoldIndicator";
 import {queueTransaction, queueTransactionBatch} from "../util/transactionQueue";
 import {
     cleanHeadingNumberHTML,
@@ -71,7 +77,17 @@ import {
     restoreBlockSelectionModeState
 } from "./blockSelection";
 import {isEmptyParagraph} from "./emptyTextBlock";
-import {cleanTableCellRichHTML, retainTableCellRichMetadata} from "../util/tableCellRich";
+import {getHeadingConversionElements, isListHeadingContainer} from "./headingConversion";
+import {cleanTableCellRichHTML, getTableBlockHTML, retainTableCellRichMetadata} from "../util/tableCellRich";
+import {cleanTableVirtualizationHTML, TABLE_VIRTUAL_ID} from "../util/tableVirtualizationDOM";
+import {
+    cleanListMindmapHTML, convertListMindmapToList, hasListMindmapRootTitle,
+    isListMindmapListConversion, listMindmapConversionSource,
+} from "../render/listMindmap/model";
+import {prepareListMindmapConversion} from "../render/listMindmap/conversion";
+import {buildCancelListOperations} from "./cancelList";
+import {buildListConversionOperations} from "./listConversion";
+import {getProtyleTransactionOwner} from "../runtimeCapabilities";
 import {completeTabsListSource, convertTabsList, isTabsListConversion} from "./tabsList";
 import {waitForPendingTransactions} from "../util/transactionQueue";
 import {
@@ -84,7 +100,8 @@ const cleanBlockSelectionModeOperations = (operations?: IOperation[]) => {
     operations?.forEach(operation => {
         if (["appendInsert", "insert", "prependInsert", "update"].includes(operation.action) &&
             typeof operation.data === "string") {
-            operation.data = cleanTableCellRichHTML(cleanBlockSelectionModeHTML(operation.data));
+            operation.data = cleanListMindmapHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(
+                cleanTableVirtualizationHTML(operation.data))));
         }
         if (operation.action === "unfoldHeading" && typeof operation.retData === "string") {
             operation.retData = cleanBlockSelectionModeHTML(operation.retData);
@@ -140,14 +157,44 @@ const removeTopElement = (updateElement: Element, protyle: IProtyle) => {
     }
 };
 
-const syncFoldAndStyleAttrs = (element: Element, operation: IOperation) => {
+const canSyncListFoldInPlace = (embedElement: Element, operation: Extract<IOperation, {action: "setAttrs"}>) => {
+    const attrs = JSON.parse(operation.data);
+    if (Object.keys(attrs).length !== 1 || !Object.prototype.hasOwnProperty.call(attrs, "fold")) {
+        return false;
+    }
+    const items = Array.from(embedElement.querySelectorAll(`[data-node-id="${operation.id}"]`));
+    // 列表子块已在 DOM 中时只同步折叠属性，展开缺少子块的片段仍需重新查询。
+    return items.length > 0 && items.every(item => item.getAttribute("data-type") === "NodeListItem" &&
+        (attrs.fold === "1" || item.childElementCount > 3));
+};
+
+const syncBlockAttrs = (element: Element, operation: Extract<IOperation, {action: "setAttrs"}>) => {
     const attrs = JSON.parse(operation.data);
     const hasFold = Object.prototype.hasOwnProperty.call(attrs, "fold");
     const hasStyle = Object.prototype.hasOwnProperty.call(attrs, "style");
-    if (!hasFold && !hasStyle) {
+    const hasMindmapView = Object.prototype.hasOwnProperty.call(attrs, Constants.CUSTOM_SY_LIST_MINDMAP);
+    const hasMindmapMetadata = Object.prototype.hasOwnProperty.call(attrs, Constants.CUSTOM_SY_LIST_MINDMAP_DATA);
+    const tabsAttrs = ["tabs-active-id", "tabs-position", "tabs-task"]
+        .filter(name => Object.prototype.hasOwnProperty.call(attrs, name));
+    if (!hasFold && !hasStyle && !hasMindmapView && !hasMindmapMetadata && tabsAttrs.length === 0) {
         return;
     }
     element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach(item => {
+        if (hasMindmapMetadata) {
+            if (attrs[Constants.CUSTOM_SY_LIST_MINDMAP_DATA]) {
+                item.setAttribute(Constants.CUSTOM_SY_LIST_MINDMAP_DATA, attrs[Constants.CUSTOM_SY_LIST_MINDMAP_DATA]);
+            } else {
+                item.removeAttribute(Constants.CUSTOM_SY_LIST_MINDMAP_DATA);
+            }
+        }
+        // 同步脑图视图属性，由列表监听器刷新各分屏中的视图。
+        if (hasMindmapView) {
+            if (attrs[Constants.CUSTOM_SY_LIST_MINDMAP]) {
+                item.setAttribute(Constants.CUSTOM_SY_LIST_MINDMAP, attrs[Constants.CUSTOM_SY_LIST_MINDMAP]);
+            } else {
+                item.removeAttribute(Constants.CUSTOM_SY_LIST_MINDMAP);
+            }
+        }
         if (hasFold) {
             if (attrs.fold === "1") {
                 item.setAttribute("fold", "1");
@@ -162,6 +209,14 @@ const syncFoldAndStyleAttrs = (element: Element, operation: IOperation) => {
                 item.removeAttribute("style");
             }
         }
+        // 撤销恢复的页签属性同步到 DOM，后续拖动据此捕获有效的选择和布局状态。
+        tabsAttrs.forEach(name => {
+            if (attrs[name]) {
+                item.setAttribute(name, attrs[name]);
+            } else {
+                item.removeAttribute(name);
+            }
+        });
     });
 };
 
@@ -193,13 +248,6 @@ const promiseTransaction = (options: {
     // 受影响的嵌入块需推迟到事务提交后再渲染，否则其查询请求会早于写入到达内核而拿到旧数据
     const pendingEmbedElements = new Set<Element>();
     const pendingAVElements = new Set<Element>();
-    /// #if MOBILE
-    if (((0 !== window.siyuan.config.sync.provider && isPaidUser()) ||
-            (0 === window.siyuan.config.sync.provider && !needSubscribe(""))) &&
-        window.siyuan.config.repo.key && window.siyuan.config.sync.enabled) {
-        document.getElementById("toolbarSync").classList.remove("fn__none");
-    }
-    /// #endif
     let range: Range;
     if (getSelection().rangeCount > 0) {
         range = getSelection().getRangeAt(0);
@@ -250,8 +298,7 @@ const promiseTransaction = (options: {
                     updatedEmbed = true;
                 };
 
-                const allTempElement = document.createElement("template");
-                allTempElement.innerHTML = cleanBlockSelectionModeHTML(getVisibleFoldHeadingHTML(operation.data));
+                let allTempElement: HTMLTemplateElement;
                 updateElements.forEach((item) => {
                     if ((currentEmbedElement && isInEmbedBlock(item, false) === currentEmbedElement) ||
                         (range && (item === range.startContainer || item.contains(range.startContainer)))) {
@@ -269,6 +316,11 @@ const promiseTransaction = (options: {
                         item.removeAttribute(Constants.ATTRIBUTE_EDITING);
                     } else {
                         // https://github.com/siyuan-note/siyuan/issues/14495
+                        // 仅在嵌入副本需要查找子块时解析完整快照，当前块的本地输入无需构建整块 DOM。
+                        if (!allTempElement) {
+                            allTempElement = document.createElement("template");
+                            allTempElement.innerHTML = cleanBlockSelectionModeHTML(getVisibleFoldHeadingHTML(operation.data));
+                        }
                         const newTempElement = allTempElement.content.querySelector(`[data-node-id="${item.getAttribute("data-id")}"]`);
                         if (newTempElement && !isInEmbedBlock(newTempElement)) {
                             updateHTML(item.querySelector("[data-node-id]"), newTempElement.outerHTML);
@@ -328,7 +380,14 @@ const promiseTransaction = (options: {
                         }
                     });
                     let hasFind = false;
-                    if (operation.previousID && updateElements.length > 0) {
+                    if (operation.nextID && updateElements.length > 0) {
+                        protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.nextID}"]`).forEach(item => {
+                            if (!isInEmbedBlock(item) && !item.contains(range.startContainer)) {
+                                item.before(...cloneMoveElements(primaryMoveElements));
+                                hasFind = true;
+                            }
+                        });
+                    } else if (operation.previousID && updateElements.length > 0) {
                         Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.previousID}"]`)).forEach(item => {
                             if (!isInEmbedBlock(item) && !getNextBlockSibling(item)?.contains(range.startContainer)) {
                                 item.after(...cloneMoveElements(primaryMoveElements));
@@ -370,7 +429,7 @@ const promiseTransaction = (options: {
                     pendingEmbedElements.add(item);
                 });
                 // 移动块（含撤销移动）后刷新相关超级块的拖拽手柄，避免手柄残留/缺失
-                const moveEls = [operation.id, operation.parentID, operation.previousID]
+                const moveEls = [operation.id, operation.parentID, operation.previousID, operation.nextID]
                     .map(id => id ? protyle.wysiwyg.element.querySelector(`[data-node-id="${id}"]`) : null)
                     .filter(Boolean) as Element[];
                 refreshSbs(...moveEls);
@@ -504,14 +563,14 @@ const promiseTransaction = (options: {
                 return;
             }
             if (operation.action === "setAttrs") {
-                syncFoldAndStyleAttrs(protyle.wysiwyg.element, operation);
+                syncBlockAttrs(protyle.wysiwyg.element, operation);
                 const gutterFoldElement = protyle.gutter.element.querySelector('[data-type="fold"]');
                 if (gutterFoldElement) {
                     gutterFoldElement.removeAttribute("disabled");
                 }
-                // 仅在 alt+click 箭头折叠时才会触发
+                // 就地同步列表折叠，保留嵌入内容中的光标节点和布局。
                 protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach((item) => {
-                    if (item.querySelector(`[data-node-id="${operation.id}"]`)) {
+                    if (item.querySelector(`[data-node-id="${operation.id}"]`) && !canSyncListFoldInPlace(item, operation)) {
                         pendingEmbedElements.add(item);
                     }
                 });
@@ -582,6 +641,10 @@ const promiseTransaction = (options: {
             countBlockWord(ids, protyle, true);
             if (!options.skipSync) {
                 responseTransaction.doOperations.forEach((operation: IOperation) => {
+                    if (operation.action === "swapBlockRef" && operation.retData?.length) {
+                        reloadProtyle(protyle, false);
+                        return;
+                    }
                     if (handleViewFoldSourceOperation(protyle, operation)) {
                         return;
                     }
@@ -590,7 +653,7 @@ const promiseTransaction = (options: {
                         return;
                     }
                     if (operation.action === "setAttrs") {
-                        syncFoldAndStyleAttrs(protyle.wysiwyg.element, operation);
+                        syncBlockAttrs(protyle.wysiwyg.element, operation);
                     }
                     // 冻结范围依赖列的 DOM 分组，新增列事务落盘后使用完整数据重建分组。
                     if (operation.action === "addAttrViewCol" &&
@@ -609,16 +672,23 @@ const promiseTransaction = (options: {
                 }
             });
             queueHeadingNumberRefresh(protyle, responseTransaction.doOperations);
+            refreshHeadingFoldIndicators(protyle);
             void applyViewFoldStates(protyle);
             options.callback?.();
         },
     };
     const submitTransactions = (items: typeof queuedTransaction[]) => fetchPost("/api/transactions", {
+        reqId: Date.now(),
         session: protyle.id,
         app: Constants.SIYUAN_APPID,
         transactions: items.map(item => item.transaction),
     }, (response) => {
-        items.forEach((item, index) => item.callback(response.data[index]));
+        items.forEach((item, index) => {
+            const result = response.data?.[index];
+            if (result) {
+                item.callback(getEditorTransaction(result));
+            }
+        });
     });
     // 仅批量提交无回调的普通块更新，结构事务需要保持逐笔提交语义。
     const batchable = !options.callback && !options.templateDocTreePlanID && options.doOperations.length === 1 &&
@@ -700,8 +770,11 @@ const deleteBlock = (updateElements: Element[], id: string, protyle: IProtyle, i
     refreshSbs(...sbParents);
 };
 
-const updateBlock = (updateElements: Element[], protyle: IProtyle, operation: IOperation, isUndo: boolean) => {
+const updateBlock = (updateElements: Element[], protyle: IProtyle, operation: Extract<IOperation, {action: "update"}>, isUndo: boolean) => {
     const range = getSelection().rangeCount > 0 ? getSelection().getRangeAt(0) : null;
+    // 撤销按快照中的光标返回操作块；同 ID 副本优先使用当前选区所在的实例，其次使用源块。
+    const focusElement = isUndo ? updateElements.find(item => range && item.contains(range.startContainer)) ||
+        updateElements.find(item => !isInEmbedBlock(item, false)) || updateElements[0] : undefined;
     updateElements.forEach(item => {
         // 前序局部回放可能已替换包含该块的祖先，跳过失效引用。
         if (!item.parentElement) {
@@ -711,6 +784,7 @@ const updateBlock = (updateElements: Element[], protyle: IProtyle, operation: IO
         if (range && item.contains(range.startContainer)) {
             isRangeBlock = true;
         }
+        const isFocusBlock = item === focusElement;
         // 表格的横向、纵向滚动均发生在首个子节点（contenteditable 容器，overflow:auto）上，
         // 更新块后需一并还原，否则固定表头长表格撤销/重做会跳回开头
         // https://github.com/siyuan-note/siyuan/issues/3650 https://github.com/siyuan-note/siyuan/issues/18035
@@ -738,17 +812,18 @@ const updateBlock = (updateElements: Element[], protyle: IProtyle, operation: IO
 
         const wbrElement = item.querySelector("wbr");
         const codeElement = item.getAttribute("data-type") === "NodeCodeBlock" ? item.querySelector(".hljs") : undefined;
+        const restoreCaret = isFocusBlock && !!wbrElement;
         // 未高亮的代码块由 highlightRender 使用 wbr 记录偏移，并在重建 DOM 后恢复光标。
         const deferCodeBlockCaretRestore = shouldDeferCodeBlockCaretRestore({
-            isRangeBlock,
+            isRangeBlock: restoreCaret,
             isReplay: isUndo,
             hasCaret: !!wbrElement,
             isCodeBlock: !!codeElement,
             isRendered: codeElement?.getAttribute("data-render") === "true",
         });
-        if (isRangeBlock && isUndo) {
+        if (isUndo && (restoreCaret || isRangeBlock)) {
             if (wbrElement) {
-                focusByWbr(item, range, deferCodeBlockCaretRestore);
+                focusByWbr(item, range || document.createRange(), deferCodeBlockCaretRestore);
             } else {
                 focusBlock(item);
             }
@@ -790,6 +865,17 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
     const deferUndoFocus = !!undoFocusContext?.undoFocusEmbedId;
     const pendingUndoEmbedElements = new Set<Element>();
     operations.forEach(operation => {
+        if (operation.action === "swapBlockRef") {
+            if (operation.retData?.includes(protyle.block.rootID)) {
+                reloadProtyle(protyle, false);
+            } else if (operation.retData?.length) {
+                protyle.wysiwyg.element.querySelectorAll('[data-type="NodeBlockQueryEmbed"]').forEach(item => {
+                    item.removeAttribute("data-render");
+                    blockRender(protyle, item);
+                });
+            }
+            return;
+        }
         if (handleViewFoldSourceOperation(protyle, operation)) {
             return;
         }
@@ -798,7 +884,7 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
             updateElements.push(item);
         });
         if (operation.action === "setAttrs") {
-            syncFoldAndStyleAttrs(protyle.wysiwyg.element, operation);
+            syncBlockAttrs(protyle.wysiwyg.element, operation);
             return;
         }
         if (operation.action === "unfoldHeading") {
@@ -842,13 +928,14 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
             return;
         }
         if (operation.action === "foldHeading") {
+            const hadContent = protyle.wysiwyg.element.childElementCount > 0;
             protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach(item => {
                 item.setAttribute("fold", "1");
                 if (!operation.retData) {
                     removeFoldHeading(item);
                 }
             });
-            if (operation.retData) {
+            if (Array.isArray(operation.retData)) {
                 operation.retData.forEach((item: string) => {
                     let embedElement: HTMLElement | false;
                     Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${item}"]`)).find(itemElement => {
@@ -866,7 +953,7 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
                 });
                 // 折叠移除子块后，刷新折叠标题所在超级块的拖拽手柄（子块数变化）
                 refreshSbs(...Array.from(protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`)));
-                if (protyle.wysiwyg.element.childElementCount === 0) {
+                if (hadContent && protyle.block.rootID && protyle.wysiwyg.element.childElementCount === 0) {
                     zoomOut({
                         protyle,
                         id: protyle.block.rootID,
@@ -955,7 +1042,7 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
             let avHTML = "";
             Object.keys(data.new).forEach(key => {
                 attrsResult[key] = data.new[key];
-                const escapeHTML = Lute.EscapeHTMLStr(data.new[key]);
+                const escapeHTML = escapeHtmlTextAndAttr(data.new[key]);
                 if (key === "bookmark") {
                     bookmarkHTML = `<div class="protyle-attr--bookmark">${escapeHTML}</div>`;
                 } else if (key === "name") {
@@ -1058,7 +1145,8 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
                         }, 450);
                     }
                 });
-                if (data["data-av-type"]) {
+                // 已渲染数据库的布局类型随新内容一起更新，避免旧内容提前套用新布局样式。
+                if (data["data-av-type"] && !item.querySelector(".av__container")) {
                     item.setAttribute("data-av-type", data["data-av-type"]);
                 }
                 const attrElements = item.querySelectorAll(".protyle-attr");
@@ -1071,6 +1159,10 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
                     nodeAttrHTML += refElement.outerHTML;
                 }
                 attrElement.innerHTML = nodeAttrHTML + Constants.ZWSP;
+                if (data.new["custom-heading-level"] !== data.old["custom-heading-level"] &&
+                    item.getAttribute("data-type") === "NodeBlockQueryEmbed") {
+                    renderEmbedHeadings(item);
+                }
                 if (mermaidLayoutChanged && item.getAttribute("data-subtype") === "mermaid") {
                     item.removeAttribute("data-render");
                     processRender(item);
@@ -1145,7 +1237,14 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
                     originSbs.push(sb);
                 }
             });
-            if (operation.previousID && updateElements.length > 0) {
+            if (operation.nextID && updateElements.length > 0) {
+                protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.nextID}"]`).forEach(item => {
+                    if (!isInEmbedBlock(item)) {
+                        item.before(...cloneMoveElements(primaryMoveElements));
+                        hasFind = true;
+                    }
+                });
+            } else if (operation.previousID && updateElements.length > 0) {
                 const previousElement = protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.previousID}"]`);
                 if (previousElement.length === 0 && protyle.options.backlinkData && isUndo && getSelection().rangeCount > 0) {
                     // 反链面板删除超级块中的最后一个段落块后撤销重做
@@ -1228,7 +1327,7 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
                 }
             });
             // 移动块（含重做/同步）后刷新相关超级块的拖拽手柄
-            const moveEls = [operation.id, operation.parentID, operation.previousID]
+            const moveEls = [operation.id, operation.parentID, operation.previousID, operation.nextID]
                 .map(id => id ? protyle.wysiwyg.element.querySelector(`[data-node-id="${id}"]`) : null)
                 .filter(Boolean) as Element[];
             refreshSbs(...moveEls);
@@ -1383,10 +1482,10 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
             "replaceAttrViewBlock", "updateAttrViewColTemplate", "setAttrViewColPin", "addAttrViewView", "setAttrViewColIcon",
             "removeAttrViewView", "setAttrViewViewName", "setAttrViewViewIcon", "duplicateAttrViewView", "duplicateAttrViewRow", "sortAttrViewView",
             "updateAttrViewColRelation", "setAttrViewColRelationFilters", "setAttrViewPageSize", "updateAttrViewColRollup",
-            "setAttrViewColRollupFilters", "sortAttrViewKey", "setAttrViewColDesc",
+            "setAttrViewColRollupFilters", "sortAttrViewKey", "setAttrViewColDesc", "setAttrViewColAttributePanelVisibility",
             "duplicateAttrViewKey", "setAttrViewViewDesc", "setAttrViewCoverFrom", "setAttrViewCoverFromAssetKeyID", "setAttrViewCardCoverPosition",
             "setAttrViewBlockView", "setAttrViewBlockVisibleViews", "setAttrViewContextFilter", "setAttrViewCardSize", "setAttrViewCardWidth", "setAttrViewCardAspectRatio",
-            "setAttrViewCardAspectRatioValue", "setAttrViewCardLayout", "setAttrViewColFullRow", "hideAttrViewName", "setAttrViewShowIcon",
+            "setAttrViewConditionalColors", "setAttrViewCalendar", "setAttrViewCardAspectRatioValue", "setAttrViewCardLayout", "setAttrViewColFullRow", "hideAttrViewName", "setAttrViewShowIcon",
             "setAttrViewWrapField", "setAttrViewGroup", "removeAttrViewGroup", "hideAttrViewGroup", "sortAttrViewGroup",
             "foldAttrViewGroup", "foldAttrViewGroups", "hideAttrViewAllGroups", "setAttrViewFitImage", "setAttrViewDisplayFieldName", "setAttrViewDisplayEmptyFields",
             "insertAttrViewBlock", "setAttrViewColDateFillSpecificTime", "setAttrViewFillColBackgroundColor", "setAttrViewUpdatedIncludeTime",
@@ -1431,6 +1530,7 @@ export const onTransaction = (protyle: IProtyle, operations: IOperation[], isUnd
         });
     });
     queueHeadingNumberRefresh(protyle, operations);
+    refreshHeadingFoldIndicators(protyle);
     if (shouldReloadForHeadingBatch(protyle.block.rootID, operations)) {
         reloadProtyle(protyle, false);
     }
@@ -1625,7 +1725,7 @@ export const insertEmptyBlockquote = (protyle: IProtyle, previousElement: HTMLEl
 
     let foldData;
     if (previousElement.getAttribute("data-type") === "NodeHeading" && previousElement.getAttribute("fold") === "1") {
-        foldData = setFold(protyle, previousElement, true, false, false, true);
+        foldData = setFold(protyle, previousElement, true, false, true);
     }
 
     const id = blockquoteElement.getAttribute("data-node-id");
@@ -1766,25 +1866,24 @@ export const turnsIntoTransaction = (options: {
     range?: Range,
     unfocus?: boolean,
 }) => {
-    // https://github.com/siyuan-note/siyuan/issues/14505
-    options.protyle.observerLoad?.disconnect();
     let selectsElement: Element[] = options.selectsElement;
     let range: Range;
     // 通过快捷键触发
     if (options.nodeElement) {
-        range = getSelection().getRangeAt(0);
-        range.insertNode(document.createElement("wbr"));
         selectsElement = Array.from(options.protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select"));
         if (selectsElement.length === 0) {
             selectsElement = [options.nodeElement];
         }
+    }
+    if (selectsElement.some(isListHeadingContainer)) {
+        return turnListBlocksInto(options, selectsElement);
+    }
+    if (selectsElement.length === 0 || options.nodeElement && selectsElement.some(item => item.classList.contains("li"))) {
+        return;
+    }
+    if (options.nodeElement) {
         let isContinue = false;
-        let isList = false;
         selectsElement.find((item, index) => {
-            if (item.classList.contains("li")) {
-                isList = true;
-                return true;
-            }
             if (selectsElement[index + 1] && getNextBlockSibling(item) === selectsElement[index + 1]) {
                 isContinue = true;
             } else if (index !== selectsElement.length - 1) {
@@ -1792,9 +1891,6 @@ export const turnsIntoTransaction = (options: {
                 return true;
             }
         });
-        if (isList) {
-            return;
-        }
         if (selectsElement.length === 1 && options.type === "Blocks2Hs" &&
             selectsElement[0].getAttribute("data-type") === "NodeHeading" &&
             options.level === parseInt(selectsElement[0].getAttribute("data-subtype").substr(1))) {
@@ -1802,12 +1898,18 @@ export const turnsIntoTransaction = (options: {
             options.type = "Blocks2Ps";
         }
         options.isContinue = isContinue;
+        range = getSelection().getRangeAt(0);
+        range.insertNode(document.createElement("wbr"));
     }
+    // https://github.com/siyuan-note/siyuan/issues/14505
+    options.protyle.observerLoad?.disconnect();
 
     let html = "";
     const doOperations: IOperation[] = [];
     const undoOperations: IOperation[] = [];
     let previousId: string;
+    const updateParagraphsIndividually = options.type === "Blocks2Ps" && selectsElement.every(item =>
+        ["NodeHeading", "NodeParagraph"].includes(item.getAttribute("data-type")));
     selectsElement.forEach((item: HTMLElement, index) => {
         item.classList.remove("protyle-wysiwyg--select");
         item.removeAttribute("select-start");
@@ -1816,7 +1918,7 @@ export const turnsIntoTransaction = (options: {
         const id = item.getAttribute("data-node-id");
 
         const tempElement = document.createElement("template");
-        if (!options.isContinue || options.level) {
+        if (!options.isContinue || options.level || updateParagraphsIndividually) {
             // @ts-ignore
             let newHTML = options.protyle.lute[options.type](item.outerHTML, options.level);
             tempElement.innerHTML = newHTML;
@@ -1860,7 +1962,7 @@ export const turnsIntoTransaction = (options: {
                 let foldData;
                 if (item.getAttribute("data-type") === "NodeHeading" && item.getAttribute("fold") === "1" &&
                     tempElement.content.firstElementChild.getAttribute("data-subtype") !== item.dataset.subtype) {
-                    foldData = setFold(options.protyle, item, undefined, undefined, false, true);
+                    foldData = setFold(options.protyle, item, undefined, undefined, true);
                     newHTML = newHTML.replace(' fold="1"', "");
                 }
                 if (foldData && foldData.doOperations?.length > 0) {
@@ -1973,6 +2075,7 @@ const unfoldListHeadings = async (protyle: IProtyle, nodeElements: Element[]) =>
         }
         foldedHeading.removeAttribute("fold");
         const response = await fetchSyncPost("/api/transactions", {
+            reqId: Date.now(),
             session: protyle.id,
             app: Constants.SIYUAN_APPID,
             transactions: [{
@@ -1986,7 +2089,12 @@ const unfoldListHeadings = async (protyle: IProtyle, nodeElements: Element[]) =>
                 }],
             }]
         });
-        foldedHeading.insertAdjacentHTML("afterend", normalizeHTMLAssetIFrameBlockDOM(response.data[0].doOperations[0].retData));
+        if (response.code === 0 && Array.isArray(response.data)) {
+            const operation = response.data[0]?.doOperations?.[0];
+            if (operation?.action === "unfoldHeading" && typeof operation.retData === "string") {
+                foldedHeading.insertAdjacentHTML("afterend", normalizeHTMLAssetIFrameBlockDOM(operation.retData));
+            }
+        }
         foldOperations.push({
             action: "foldHeading",
             id: itemId
@@ -1995,10 +2103,117 @@ const unfoldListHeadings = async (protyle: IProtyle, nodeElements: Element[]) =>
     return foldOperations.reverse();
 };
 
+export const removeListStructure = (protyle: IProtyle, nodeElements: Element[], recursively = false) =>
+    turnListBlocksInto({protyle, recursively}, nodeElements.filter(isListHeadingContainer));
+
+const turnListBlocksInto = async (options: {
+    protyle: IProtyle,
+    type?: TTurnInto,
+    level?: number,
+    range?: Range,
+    unfocus?: boolean,
+    recursively?: boolean,
+}, elements: Element[]) => {
+    const protyle = options.protyle;
+    const selected = elements.filter(element => !elements.some(parent => parent !== element && parent.contains(element)));
+    const conversionElements = options.recursively ? selected.flatMap(element => [element,
+        ...Array.from(element.querySelectorAll('[data-type="NodeList"]')).filter(list =>
+            list.getAttribute("data-subtype") === element.getAttribute("data-subtype"))]).reverse() : selected;
+    // 取消列表只移除外层结构，任意类型的首块均可保留。
+    const targets = options.type ? getHeadingConversionElements(conversionElements) : conversionElements.flatMap(element => {
+        const items = element.getAttribute("data-type") === "NodeList" ?
+            Array.from(element.children).filter(item => item.getAttribute("data-type") === "NodeListItem") : [element];
+        return items.map(item => Array.from(item.children).find(child => child.hasAttribute("data-node-id"))).filter(Boolean);
+    });
+    if (targets.length === 0) {
+        return;
+    }
+    const lists = new Map<Element, Set<string>>();
+    conversionElements.filter(isListHeadingContainer).forEach(element => {
+        const list = element.getAttribute("data-type") === "NodeList" ? element : element.parentElement;
+        const itemIDs = lists.get(list) || new Set<string>();
+        const items = element === list ? Array.from(list.children) : [element];
+        items.forEach(item => {
+            const first = Array.from(item.children).find(child => child.hasAttribute("data-node-id"));
+            if (targets.includes(first)) {
+                itemIDs.add(item.getAttribute("data-node-id"));
+            }
+        });
+        if (itemIDs.size > 0) {
+            lists.set(list, itemIDs);
+        }
+    });
+    if (!options.unfocus && !targets[0].querySelector("wbr")) {
+        getContenteditableElement(targets[0])?.insertAdjacentHTML("afterbegin", "<wbr>");
+    }
+    const foldOperations = await unfoldListHeadings(protyle, Array.from(lists.keys()));
+    protyle.observerLoad?.disconnect();
+    hideElements(["select"], protyle);
+    const doOperations: IOperation[] = [];
+    const undoOperations: IOperation[] = [];
+    const convert = (html: string): string => {
+        // @ts-ignore Lute 声明尚未包含块类型转换方法。
+        return protyle.lute[options.type](html, options.level);
+    };
+    for (const [list, itemIDs] of lists) {
+        let previousID = getPreviousBlockSibling(list)?.getAttribute("data-node-id");
+        let parentID = getEmbedChildOperationParentID(list) || getParentBlock(list)?.getAttribute("data-node-id") ||
+            protyle.block.parentID || protyle.block.rootID;
+        if (!previousID && protyle.block.showAll) {
+            const response = await fetchSyncPost("/api/block/getBlockRelevantIDs", {
+                id: list.getAttribute("data-node-id"), notebook: protyle.notebookId,
+            });
+            if (response.code !== 0) {
+                throw new Error(response.msg);
+            }
+            previousID = response.data.previousID;
+            parentID = response.data.parentID || parentID;
+        }
+        const operations = buildListConversionOperations(list, {itemIDs, previousID, parentID,
+            convert: options.type ? convert : undefined,
+            newID: () => Lute.NewNodeID()});
+        doOperations.push(...operations.doOperations);
+        undoOperations.unshift(...operations.undoOperations);
+        disposeCustomBlocksInElement(list);
+        list.insertAdjacentHTML("afterend", operations.html);
+        list.remove();
+    }
+    selected.filter(element => ["NodeHeading", "NodeParagraph"].includes(element.getAttribute("data-type"))).forEach(element => {
+        const id = element.getAttribute("data-node-id");
+        let html = convert(element.outerHTML);
+        let foldData;
+        if (element.getAttribute("data-type") === "NodeHeading" && element.getAttribute("fold") === "1" &&
+            (options.type === "Blocks2Ps" || element.getAttribute("data-subtype") !== `h${options.level}`)) {
+            foldData = setFold(protyle, element as HTMLElement, undefined, undefined, true);
+            html = html.replace(' fold="1"', "");
+            doOperations.push(...(foldData?.doOperations || []));
+        }
+        doOperations.push({action: "update", id, data: html});
+        undoOperations.push({action: "update", id, data: element.outerHTML});
+        undoOperations.push(...(foldData?.undoOperations || []));
+        disposeCustomBlocksInElement(element);
+        element.outerHTML = html;
+    });
+    transaction(protyle, doOperations.concat(foldOperations), undoOperations.concat(foldOperations.map(operation => ({...operation}))));
+    if (!hasViewFoldContext(protyle)) {
+        onTransaction(protyle, foldOperations, false, true);
+    }
+    blockRender(protyle, protyle.wysiwyg.element);
+    processRender(protyle.wysiwyg.element);
+    highlightRender(protyle.wysiwyg.element);
+    avRender(protyle.wysiwyg.element, protyle);
+    if (!options.unfocus) {
+        focusByWbr(protyle.wysiwyg.element, options.range || getEditorRange(protyle.wysiwyg.element));
+    }
+};
+
 export const turnListsRecursively = async (options: {
     protyle: IProtyle,
     nodeElements: Element[],
 } & TRecursiveListConversion) => {
+    if (options.type === "CancelListRecursively") {
+        return turnListBlocksInto({protyle: options.protyle, type: "Blocks2Ps", recursively: true}, options.nodeElements);
+    }
     const listElements = options.nodeElements.filter((item, index, elements) => {
         return item.getAttribute("data-type") === "NodeList" &&
             !elements.some((parent, parentIndex) => parentIndex !== index &&
@@ -2015,90 +2230,30 @@ export const turnListsRecursively = async (options: {
         nodeElement.removeAttribute("select-start");
         nodeElement.removeAttribute("select-end");
     });
-    const contexts = await Promise.all(listElements.map(async (nodeElement) => {
-        const previousBlockElement = getPreviousBlockSibling(nodeElement);
-        let previousId = previousBlockElement?.getAttribute("data-node-id");
-        if (!previousBlockElement && options.type === "CancelListRecursively" && options.protyle.block.showAll) {
-            const response = await fetchSyncPost("/api/block/getBlockRelevantIDs", {
-                id: nodeElement.getAttribute("data-node-id"),
-                notebook: options.protyle.notebookId,
-            });
-            previousId = response.data.previousID;
-        }
-        return {
-            id: nodeElement.getAttribute("data-node-id"),
-            nodeElement,
-            parentId: getEmbedChildOperationParentID(nodeElement) ||
-                getParentBlock(nodeElement).getAttribute("data-node-id") ||
-                options.protyle.block.parentID ||
-                options.protyle.block.rootID,
-            previousId,
-        };
-    }));
     const foldOperations = await unfoldListHeadings(options.protyle, listElements);
     const doOperations: IOperation[] = [];
     const undoOperations: IOperation[] = [];
-    contexts.forEach((context) => {
-        const nodeElement = context.nodeElement;
+    listElements.forEach((nodeElement) => {
         const oldHTML = cleanHeadingNumberHTML(nodeElement.outerHTML);
-        const newHTML = cleanHeadingNumberHTML(options.type === "ConvertListType" ?
-            options.protyle.lute.ConvertListType(nodeElement.outerHTML, options.targetListType) :
-            options.protyle.lute.CancelListRecursively(nodeElement.outerHTML));
-        if (options.type === "ConvertListType") {
-            if (newHTML === oldHTML) {
-                return;
-            }
-            doOperations.push({
-                action: "update",
-                id: context.id,
-                data: newHTML
-            });
-            undoOperations.push({
-                action: "update",
-                id: context.id,
-                data: oldHTML
-            });
-            disposeCustomBlocksInElement(nodeElement);
-            nodeElement.insertAdjacentHTML("afterend", newHTML);
-            const newElement = nodeElement.nextElementSibling as HTMLElement;
-            nodeElement.remove();
-            newElement.setAttribute(Constants.ATTRIBUTE_EDITING, "true");
+        const newHTML = cleanHeadingNumberHTML(options.protyle.lute.ConvertListType(nodeElement.outerHTML, options.targetListType));
+        if (newHTML === oldHTML) {
             return;
         }
-
-        const doPreviousId = getPreviousBlockSibling(nodeElement)?.getAttribute("data-node-id") || context.previousId;
         doOperations.push({
-            action: "delete",
-            id: context.id
-        });
-        const tempElement = document.createElement("template");
-        tempElement.innerHTML = newHTML;
-        let tempPreviousId = doPreviousId;
-        Array.from(tempElement.content.children).forEach((item) => {
-            const tempId = item.getAttribute("data-node-id");
-            doOperations.push({
-                action: "insert",
-                data: item.outerHTML,
-                id: tempId,
-                previousID: tempPreviousId,
-                parentID: context.parentId
-            });
-            undoOperations.push({
-                action: "delete",
-                id: tempId
-            });
-            tempPreviousId = tempId;
+            action: "update",
+            id: nodeElement.getAttribute("data-node-id"),
+            data: newHTML
         });
         undoOperations.push({
-            action: "insert",
-            data: oldHTML,
-            id: context.id,
-            previousID: context.previousId,
-            parentID: context.parentId
+            action: "update",
+            id: nodeElement.getAttribute("data-node-id"),
+            data: oldHTML
         });
         disposeCustomBlocksInElement(nodeElement);
         nodeElement.insertAdjacentHTML("afterend", newHTML);
+        const newElement = nodeElement.nextElementSibling as HTMLElement;
         nodeElement.remove();
+        newElement.setAttribute(Constants.ATTRIBUTE_EDITING, "true");
     });
     const doFoldOperations = foldOperations.map((operation) => ({...operation}));
     const undoFoldOperations = foldOperations.map((operation) => ({...operation}));
@@ -2108,6 +2263,7 @@ export const turnListsRecursively = async (options: {
                 transaction(options.protyle, doFoldOperations, undoFoldOperations);
             } else {
                 await fetchSyncPost("/api/transactions", {
+                    reqId: Date.now(),
                     session: options.protyle.id,
                     app: Constants.SIYUAN_APPID,
                     transactions: [{
@@ -2158,9 +2314,19 @@ export const turnsOneInto = async (options: {
     if (["CancelBlockquote", "CancelList", "CancelCallout"].includes(options.type)) {
         foldOperations = await unfoldListHeadings(options.protyle, [options.nodeElement]);
     }
-    let oldHTML = options.nodeElement.outerHTML;
+    const completeMindmap = isListMindmapListConversion(options.nodeElement, options.type) &&
+        hasListMindmapRootTitle(options.nodeElement);
+    const conversionSource = completeMindmap ?
+        await prepareListMindmapConversion(options.protyle, options.nodeElement) : options.nodeElement;
+    if (!conversionSource) {
+        return;
+    }
+    const mindmapSnapshot = completeMindmap ? cleanListMindmapHTML(options.nodeElement.outerHTML) : undefined;
+    const mindmapRootID = options.protyle.block.rootID;
+    const mindmapNotebookID = options.protyle.notebookId;
+    let oldHTML = conversionSource.outerHTML;
     if (options.undoElement) {
-        const oldElement = options.nodeElement.cloneNode(true) as HTMLElement;
+        const oldElement = conversionSource.cloneNode(true) as HTMLElement;
         const undoElement = oldElement.querySelector(`[data-node-id="${options.undoElement.id}"]`);
         if (undoElement) {
             undoElement.outerHTML = options.undoElement.html;
@@ -2174,13 +2340,25 @@ export const turnsOneInto = async (options: {
             id: options.id,
             notebook: options.protyle.notebookId,
         });
+        if (response.code !== 0) {
+            throw new Error(response.msg);
+        }
         previousId = response.data.previousID;
+    }
+    if (completeMindmap && (!options.nodeElement.isConnected || options.protyle.disabled ||
+        options.protyle.block.rootID !== mindmapRootID ||
+        options.protyle.notebookId !== mindmapNotebookID ||
+        options.protyle.options.action.includes(Constants.CB_GET_HISTORY) ||
+        options.nodeElement.closest(".protyle-wysiwyg__embed") ||
+        options.nodeElement.closest(".protyle-wysiwyg") !== options.protyle.wysiwyg.element ||
+        cleanListMindmapHTML(options.nodeElement.outerHTML) !== mindmapSnapshot)) {
+        return;
     }
     const parentId = getEmbedChildOperationParentID(options.nodeElement) ||
         getParentBlock(options.nodeElement).getAttribute("data-node-id") || options.protyle.block.parentID;
     let newHTML: string;
     if (isTabsListConversion(options.type)) {
-        let source = options.nodeElement;
+        let source = conversionSource;
         if (!options.protyle.lite && source.querySelector('[fold="1"]')) {
             await waitForPendingTransactions(options.protyle);
             const snapshot = source.outerHTML;
@@ -2188,6 +2366,9 @@ export const turnsOneInto = async (options: {
                 id: options.id,
                 notebook: options.protyle.notebookId,
             });
+            if (response.code !== 0) {
+                return;
+            }
             if (!source.isConnected || source.outerHTML !== snapshot) {
                 return;
             }
@@ -2200,15 +2381,24 @@ export const turnsOneInto = async (options: {
             source = completeTabsListSource(source, full);
             oldHTML = source.outerHTML;
         }
-        const converted = convertTabsList(source, options.type, options.protyle.lute);
+        const converted = convertTabsList(source.getAttribute("data-type") === "NodeMindmap" ?
+            listMindmapConversionSource(source) : source, options.type, options.protyle.lute);
         if (!converted) {
             return;
         }
         newHTML = converted.outerHTML;
     } else {
+        const listHTML = convertListMindmapToList(conversionSource, options.type, options.protyle.lute);
+        const sourceHTML = options.type === "CancelList" && options.nodeElement.getAttribute("data-type") === "NodeMindmap" ?
+            listMindmapConversionSource(options.nodeElement).outerHTML : cleanListMindmapHTML(options.nodeElement.outerHTML);
         // @ts-ignore
-        newHTML = options.protyle.lute[options.type](options.nodeElement.outerHTML, options.level);
+        newHTML = listHTML ?? options.protyle.lute[options.type](sourceHTML, options.level);
     }
+    const cancelListOperations = options.type === "CancelList" &&
+        options.nodeElement.getAttribute("data-type") === "NodeList" ? buildCancelListOperations(options.nodeElement, {
+        previousID: previousId,
+        parentID: parentId,
+    }) : undefined;
     disposeCustomBlocksInElement(options.nodeElement);
     options.nodeElement.insertAdjacentHTML("afterend", newHTML);
     options.nodeElement = options.nodeElement.nextElementSibling as HTMLElement;
@@ -2216,34 +2406,36 @@ export const turnsOneInto = async (options: {
     if (["CancelBlockquote", "CancelList", "CancelCallout"].includes(options.type)) {
         const tempElement = document.createElement("template");
         tempElement.innerHTML = newHTML;
-        const doOperations: IOperation[] = [{
+        const doOperations: IOperation[] = cancelListOperations?.doOperations || [{
             action: "delete",
             id: options.id
         }];
-        const undoOperations: IOperation[] = [];
+        const undoOperations: IOperation[] = cancelListOperations?.undoOperations || [];
         let tempPreviousId = previousId;
-        Array.from(tempElement.content.children).forEach((item) => {
-            const tempId = item.getAttribute("data-node-id");
-            doOperations.push({
-                action: "insert",
-                data: item.outerHTML,
-                id: tempId,
-                previousID: tempPreviousId,
-                parentID: parentId
+        if (!cancelListOperations) {
+            Array.from(tempElement.content.children).forEach((item) => {
+                const tempId = item.getAttribute("data-node-id");
+                doOperations.push({
+                    action: "insert",
+                    data: item.outerHTML,
+                    id: tempId,
+                    previousID: tempPreviousId,
+                    parentID: parentId
+                });
+                undoOperations.push({
+                    action: "delete",
+                    id: tempId
+                });
+                tempPreviousId = tempId;
             });
             undoOperations.push({
-                action: "delete",
-                id: tempId
+                action: "insert",
+                data: oldHTML,
+                id: options.id,
+                previousID: previousId,
+                parentID: parentId
             });
-            tempPreviousId = tempId;
-        });
-        undoOperations.push({
-            action: "insert",
-            data: oldHTML,
-            id: options.id,
-            previousID: previousId,
-            parentID: parentId
-        });
+        }
         if (options.additionalOperations) {
             doOperations.unshift(...options.additionalOperations.doOperations);
             undoOperations.push(...options.additionalOperations.undoOperations);
@@ -2275,6 +2467,11 @@ export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoO
                                 templateDocTreePlanID?: string,
                                 trackedRangeInsertion?: ITrackedRangeInsertion,
                             }) => {
+    const owner = protyle?.lite && getProtyleTransactionOwner(protyle, doOperations);
+    if (owner && !owner.lite && owner !== protyle) {
+        transaction(owner, doOperations, undoOperations, options);
+        return;
+    }
     if (protyle) {
         const prepared = prepareViewFoldTransaction(protyle, doOperations, undoOperations);
         doOperations = prepared.doOperations;
@@ -2286,9 +2483,15 @@ export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoO
     }
     cleanBlockSelectionModeOperations(doOperations);
     cleanBlockSelectionModeOperations(undoOperations);
+    [doOperations, undoOperations].forEach(operations => operations?.forEach(operation => {
+        if ((operation.action === "update" || operation.action === "insert") && typeof operation.data === "string") {
+            operation.data = restoreInlineElementBoundaryHTML(operation.data);
+        }
+    }));
     doOperations.forEach(operation => {
         if (operation.action === "update" && typeof operation.data === "string") {
-            undoOperations?.filter(undo => undo.action === "update" && undo.id === operation.id && typeof undo.data === "string")
+            undoOperations?.filter((undo): undo is Extract<IOperation, {action: "update"}> =>
+                undo.action === "update" && undo.id === operation.id && typeof undo.data === "string")
                 .forEach(undo => undo.data = retainTableCellRichMetadata(undo.data, operation.data));
         }
     });
@@ -2297,6 +2500,7 @@ export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoO
     if (!protyle) {
         // 文档树中点开属性->数据库后的变更操作 & 文档树添加到数据库
         fetchPost("/api/transactions", {
+            reqId: Date.now(),
             session: Constants.SIYUAN_APPID,
             app: Constants.SIYUAN_APPID,
             transactions: [{
@@ -2312,6 +2516,13 @@ export const transaction = (protyle: IProtyle, doOperations: IOperation[], undoO
         protyle.updated = true;
         protyle.undo.add(doOperations, undoOperations, protyle);
     }
+    // 本地插入和正在编辑的块保留现有 DOM，立即补充图片文件名和提示文本。
+    doOperations.forEach(operation => {
+        if ((operation.action === "insert" || operation.action === "update") &&
+            typeof operation.data === "string" && operation.data.includes("<img ")) {
+            protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach(renderImageDisplay);
+        }
+    });
     if (protyle?.lite) {
         if (!options?.skipSync) {
             syncTrackedRanges(protyle, doOperations, options?.trackedRangeInsertion);
@@ -2366,7 +2577,7 @@ const processFold = (operation: IOperation, protyle: IProtyle) => {
                     return;
                 }
                 item.removeAttribute("fold");
-                if (!item.lastElementChild.classList.contains("protyle-attr")) {
+                if (item.lastElementChild?.getAttribute("spin") === "1") {
                     item.lastElementChild.remove();
                 }
                 removeUnfoldRepeatBlock(visibleRetData, protyle);
@@ -2436,10 +2647,16 @@ export const updateTransaction = (protyle: IProtyle, element: Element, oldHTML: 
         refreshSbResize(element);
     }
     const id = element.getAttribute("data-node-id");
-    const newHTML = cleanHeadingNumberHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(element.outerHTML)));
-    const cleanOldHTML = cleanHeadingNumberHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(oldHTML)));
+    const getHTML = () => element.getAttribute("data-type") === "NodeTable" && element.querySelector(`[${TABLE_VIRTUAL_ID}]`) ?
+        getTableBlockHTML(element) : element.outerHTML;
+    let newHTML = cleanListMindmapHTML(cleanHeadingNumberHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(getHTML()))));
+    const cleanOldHTML = cleanListMindmapHTML(cleanHeadingNumberHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(oldHTML))));
     if (newHTML === cleanOldHTML.replace("<wbr>", "") && !additionalOperations) {
         return;
+    }
+    if (element.getAttribute("data-type") === "NodeTable") {
+        element.setAttribute("updated", dayjs().format("YYYYMMDDHHmmss"));
+        newHTML = cleanListMindmapHTML(cleanHeadingNumberHTML(cleanTableCellRichHTML(cleanBlockSelectionModeHTML(getHTML()))));
     }
     element.setAttribute(Constants.ATTRIBUTE_EDITING, "true");
     const doOperations: IOperation[] = [{

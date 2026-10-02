@@ -1,5 +1,8 @@
+import {refreshSettingConfig} from "./setting/sync";
 import {showMessage} from "../dialog/message";
 import {fetchPost} from "../util/fetch";
+import {ContractFormData} from "../util/contractFormData";
+import type {APIPOSTRoutes} from "../types/api";
 import {confirmDialog} from "../dialog/confirmDialog";
 import {highlightRender} from "../protyle/render/highlightRender";
 import {Constants} from "../constants";
@@ -11,6 +14,7 @@ import {escapeAttr, escapeHtml} from "../util/escape";
 import {formatCount} from "../util/number";
 import {loadPlugin, unloadPlugin} from "../plugin/loader";
 import {subscribeGlobalPluginState} from "../plugin/globalState";
+import {getSettingsWindowHost} from "./setting/windowContext";
 import {switchSettingPanelSubTab} from "./setting/mount";
 import {isThemeFrontendSupported} from "../util/themeCompatibility";
 import {
@@ -33,6 +37,7 @@ import {BAZAAR_README_SANITIZE_OPTIONS} from "./bazaarReadmeSanitize";
 import {
     BAZAAR_PACKAGE_CONFIG,
     BAZAAR_PACKAGE_TYPES,
+    isBazaarPackageType,
 } from "./bazaar/packageConfig";
 import {genBazaarPackagePanelHTML} from "./bazaar/html";
 import {bindBazaarEvents} from "./bazaar/events";
@@ -288,7 +293,7 @@ export const bazaar = {
                         <option ${localSort.downloadedPlugin === "6" ? "selected" : ""} data-plugin-only="true" value="6">${window.siyuan.languages.sortByDisabledFirst}</option>
                     </select>
                 </div>
-                <input data-type="downloaded-filter" class="b3-text-field config-bazaar__filter" placeholder="${window.siyuan.languages.enterKey} ${window.siyuan.languages.search}">
+                <input spellcheck="false" data-type="downloaded-filter" class="b3-text-field config-bazaar__filter" placeholder="${window.siyuan.languages.enterKey} ${window.siyuan.languages.search}">
                 <div class="fn__flex config-bazaar__actions">
                     <label class="block__icon block__icon--show config-bazaar__local-package ariaLabel" data-type="install-local-package" data-position="north" aria-label="${window.siyuan.languages.installLocalBazaarPackage}">
                         <svg class="b3-button__icon"><use xlink:href="#iconDownload"></use></svg>
@@ -343,14 +348,19 @@ export const bazaar = {
         }
     },
     _genPackageIconHTML(iconURL: string, detail = false): string {
-        if (iconURL) {
-            const className = detail ? " class=\"item__img\"" : "";
-            return `<img${className} src="${escapeAttr(iconURL)}" loading="lazy" onerror="this.src='/stage/images/icon.png'">`;
+        // 图标缺失或加载失败时显示同尺寸的集市图标，避免切换时改变布局
+        const bazaarIconHTML = (hidden: boolean) => {
+            const placeholderStyle = hidden ? " style=\"display: none\"" : "";
+            return detail ?
+                `<svg class="item__img item__img--placeholder"${placeholderStyle}><use xlink:href="#iconBazaar"></use></svg>` :
+                `<span${placeholderStyle}><svg class="b3-card__icon"><use xlink:href="#iconBazaar"></use></svg></span>`;
+        };
+        if (!iconURL) {
+            return bazaarIconHTML(false);
         }
-        if (detail) {
-            return "<svg class=\"item__img item__img--placeholder\"><use xlink:href=\"#iconBazaar\"></use></svg>";
-        }
-        return "<span><svg class=\"b3-card__icon\"><use xlink:href=\"#iconBazaar\"></use></svg></span>";
+        const className = detail ? " class=\"item__img\"" : "";
+        const onIconError = "this.onerror=null;this.style.display='none';this.nextElementSibling.style.display=''";
+        return `<img${className} src="${escapeAttr(iconURL)}" loading="lazy" onerror="${onIconError}">${bazaarIconHTML(true)}`;
     },
     _genIncompatibleChipHTML(item: IBazaarItem, source: "installed" | "bazaar", bazaarType: TBazaarType) {
         const incompatible = bazaarType === "themes" ?
@@ -439,7 +449,7 @@ export const bazaar = {
                 callback(bazaar._getPackageDetail(bazaarType, packageName) || {});
                 return;
             }
-            const detail = response.data as IBazaarPackageDetail;
+            const detail = response.data;
             bazaar._setPackageDetail(bazaarType, packageName, detail);
             callback(detail);
         });
@@ -791,7 +801,6 @@ ${primaryAction ? '<div class="fn__hr"></div>' : ""}
             if (!bazaar._isMountCurrent(mount)) {
                 return;
             }
-            contentElement.removeAttribute("data-loading");
             const activeBtn = contentElement.previousElementSibling.querySelector('.b3-button[data-type^="my"]:not(.b3-button--outline)') as HTMLElement;
             if (activeBtn?.getAttribute("data-type") !== myType) {
                 return;
@@ -817,14 +826,17 @@ ${primaryAction ? '<div class="fn__hr"></div>' : ""}
                     const showDisable = ["icons", "themes"].includes(bazaarType) && bazaarItem.current;
                     const plugin = bazaarType === "plugins" ?
                         app.plugins.find((item: Plugin) => item.name === bazaarItem.name) : undefined;
-                    const hasSetting = plugin ? hasPluginSetting(plugin) : false;
+                    const host = getSettingsWindowHost();
+                    const hasSetting = bazaarType === "plugins" &&
+                        (host ? host.hasPluginSetting(bazaarItem.name) : Boolean(plugin && hasPluginSetting(plugin)));
                     const showPublishSwitch = bazaarType === "plugins" && window.siyuan.config.publish.enable;
                     const publishEnabled = isBazaarPluginEnabledInPublish(bazaarItem);
-                    const publishSwitchHTML = showPublishSwitch ? `<label data-type="plugin-publish-enable-label" class="config-bazaar__publish-switch" title="${escapeAttr(bazaarItem.disabledInPublish ? window.siyuan.languages.pluginDisabledInPublishTip : window.siyuan.languages.publishService)}">
+                    const publishSwitchHTML = showPublishSwitch ? `<span class="config-bazaar__publish-controls"><label data-type="plugin-publish-enable-label" class="config-bazaar__publish-switch ariaLabel" data-position="north" aria-label="${escapeAttr(bazaarItem.disabledInPublish ? window.siyuan.languages.pluginDisabledInPublishTip : window.siyuan.languages.publishService)}">
                 <input data-type="plugin-publish-enable" data-position="north" class="b3-switch fn__flex-center" type="checkbox"${publishEnabled ? " checked" : ""}${bazaarItem.disabledInPublish ? " disabled" : ""}>
                 <span class="fn__space--small"></span>
                 <span class="fn__flex-center ft__on-surface">${window.siyuan.languages.publishService}</span>
-            </label>` : "";
+            </label>
+            ${bazaarItem.disabledInPublish ? "" : `<button type="button" data-type="plugin-publish-data" class="block__icon block__icon--show ariaLabel" data-position="north" aria-label="${escapeAttr(window.siyuan.languages.pluginPublishDataTip)}"><svg aria-hidden="true"><use xlink:href="#iconUpload"></use></svg></button>`}</span>` : "";
                     const available = bazaar._getUpdatedItem(bazaarType, bazaarItem.name)?.available;
                     const ratingKey = getRatingKey(bazaarType, bazaarItem.name);
                     return `<div data-name="${escapeAttr(bazaarItem.name)}" data-package-type="${bazaarType}" data-package-source="downloaded" class="b3-card${bazaarItem.current ? " b3-card--current" : ""}">
@@ -898,6 +910,8 @@ type="checkbox">
                     bazaar._refreshReadmeDetail(bazaarType, packageName);
                 }
             }
+        }, undefined, undefined, undefined, 30000).finally(() => {
+            contentElement.removeAttribute("data-loading");
         });
         return true;
     },
@@ -1101,7 +1115,13 @@ type="checkbox">
 </div></div>${isMobile() ? readmeActionsHTML : ""}`;
         const previewElement = readmeElement.querySelector<HTMLElement>(".item__preview");
         if (previewElement) {
+            // 加载期间保留预览区域，仅在加载失败后移除容器
             previewElement.style.backgroundImage = `url(${JSON.stringify(displayData.previewURL)})`;
+            const previewImage = new Image();
+            previewImage.onerror = () => {
+                previewElement.remove();
+            };
+            previewImage.src = displayData.previewURL;
         }
         const isInstalledReadme = from === "downloaded";
         if (isInstalledReadme) {
@@ -1367,7 +1387,7 @@ type="checkbox">
                 callback();
             };
             if (!enabled) {
-                unloadPlugin(app, item.name).then(finish);
+                (getSettingsWindowHost()?.unloadPlugin(item.name) || unloadPlugin(app, item.name)).then(finish);
                 return;
             }
             if (window.siyuan.config.bazaar.petalDisabled) {
@@ -1375,7 +1395,7 @@ type="checkbox">
                 finish();
                 return;
             }
-            loadPlugin(app, response.data).then(finish, (error) => {
+            (getSettingsWindowHost()?.loadPlugin(response.data) || loadPlugin(app, response.data)).then(finish, (error) => {
                 console.error(error);
                 finish();
             });
@@ -1437,14 +1457,24 @@ type="checkbox">
                 appearance.themeDark = "midnight";
             }
         }
-        fetchPost("/api/setting/setAppearance", appearance, response => {
+        const previous = window.siyuan.config.appearance;
+        const patch: {icon?: string; themeLight?: string; themeDark?: string; mode?: number; modeOS?: boolean} = {};
+        for (const key of ["icon", "themeLight", "themeDark", "mode", "modeOS"] as const) {
+            if (appearance[key] !== previous[key]) {
+                Object.assign(patch, {[key]: appearance[key]});
+            }
+        }
+        if (!Object.keys(patch).length) {
+            callback();
+            return;
+        }
+        fetchPost("/api/setting/patch", {appearance: patch}, response => {
             if (response.code !== 0) {
                 showMessage(response.msg);
                 callback();
                 return;
             }
-            window.siyuan.config.appearance = response.data;
-            callback();
+            void refreshSettingConfig("appearance").then(callback);
         });
     },
     _initBazaarPanel(bazaarType: TBazaarType, panel: HTMLElement) {
@@ -1512,25 +1542,20 @@ type="checkbox">
             return;
         }
         bazaar._setLocalPackageUploading(true, mount);
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("frontend", getFrontend());
-        formData.append("overwrite", overwrite.toString());
+        const formData = new ContractFormData<APIPOSTRoutes["/api/bazaar/installLocalBazaarPackage"]["request"]>({
+            file,
+            frontend: getFrontend(),
+            overwrite: overwrite.toString(),
+        });
         fetchPost("/api/bazaar/installLocalBazaarPackage", formData, (response) => {
-            const data = response.data as {
-                reason?: string;
-                packageType?: TBazaarType;
-                packageName?: string;
-                minAppVersion?: string;
-                updated?: boolean;
-            };
+            const data = response.data;
             if (response.code !== 0) {
-                if (data?.reason === "package-exists" && data.packageName) {
+                if (data && "reason" in data && data.reason === "package-exists" && data.packageName) {
                     confirmDialog("⚠️ " + window.siyuan.languages.update,
                         window.siyuan.languages.confirmOverwriteLocalBazaarPackage.replace("${name}", escapeHtml(data.packageName)), () => {
                             bazaar._installLocalPackage(file, app, mount, true);
                         });
-                } else if (data?.reason === "package-incompatible") {
+                } else if (data && "reason" in data && data.reason === "package-incompatible") {
                     showMessage(data.minAppVersion ?
                         window.siyuan.languages.bazaarNeedVersion.replace("${x}", data.minAppVersion) :
                         window.siyuan.languages.incompatible);
@@ -1539,7 +1564,7 @@ type="checkbox">
                 }
                 return;
             }
-            if (!data?.packageType || !data.packageName) {
+            if (!data || !("updated" in data) || !isBazaarPackageType(data.packageType) || !data.packageName) {
                 showMessage(window.siyuan.languages.uploadError);
                 return;
             }
@@ -1641,7 +1666,6 @@ type="checkbox">
                 fetchPost("/api/setting/setBazaar", {
                     ...window.siyuan.config.bazaar,
                     trust: true,
-                    app: Constants.SIYUAN_APPID,
                 }, (response) => {
                     window.siyuan.config.bazaar = response.data;
                     if (!bazaar._isMountCurrent(mount)) {
@@ -1719,7 +1743,7 @@ type="checkbox">
         state.frameID = window.requestAnimationFrame(() => {
             state.frameID = undefined;
             if (state.active && this._isBazaarCardRenderCurrent(state)) {
-                this._appendBazaarCardBatch(state);
+                this._fillVisibleBazaarCards(state);
             }
         });
     },
@@ -1730,48 +1754,55 @@ type="checkbox">
         if (typeof window.IntersectionObserver === "function") {
             if (!state.observer) {
                 state.observer = new IntersectionObserver((entries) => {
-                    if (entries.some((entry) => entry.isIntersecting)) {
-                        state.observer?.disconnect();
-                        this._scheduleBazaarCardBatch(state);
+                    if (!state.active || !this._isBazaarCardRenderCurrent(state)) {
+                        return;
                     }
+                    entries.filter((entry) => entry.isIntersecting).forEach((entry) => {
+                        this._fillBazaarCard(state, entry.target as HTMLElement);
+                    });
                 }, {
                     root: state.panel,
                     rootMargin: "640px 0px",
                 });
             }
             state.observer.disconnect();
-            const lastCard = state.cardsElement.lastElementChild;
-            if (lastCard) {
-                state.observer.observe(lastCard);
-            }
+            state.cardsElement.querySelectorAll("[data-bazaar-index]").forEach((card) => state.observer.observe(card));
             return;
         }
         if (!state.scrollHandler) {
             state.scrollHandler = () => {
-                if (state.panel.scrollTop + state.panel.clientHeight + 640 >= state.panel.scrollHeight) {
-                    this._scheduleBazaarCardBatch(state);
-                }
+                this._scheduleBazaarCardBatch(state);
             };
             state.panel.addEventListener("scroll", state.scrollHandler, {passive: true});
         }
-        if (state.panel.clientHeight > 0 &&
-            state.panel.scrollTop + state.panel.clientHeight + 640 >= state.panel.scrollHeight) {
+        if (state.panel.clientHeight > 0) {
             this._scheduleBazaarCardBatch(state);
         }
     },
-    _appendBazaarCardBatch(state: IBazaarCardRenderState) {
+    _fillBazaarCard(state: IBazaarCardRenderState, card: HTMLElement) {
+        const index = card.getAttribute("data-bazaar-index");
+        if (index === null) {
+            return;
+        }
+        state.observer?.unobserve(card);
+        card.removeAttribute("data-bazaar-index");
+        card.outerHTML = this._genCardHTML(state.packages[Number(index)], state.bazaarType);
+        state.cursor++;
+        if (state.cursor >= state.packages.length) {
+            this._stopBazaarCardWatcher(state);
+        }
+    },
+    _fillVisibleBazaarCards(state: IBazaarCardRenderState) {
         if (!this._isBazaarCardRenderCurrent(state)) {
             return;
         }
-        const batch = getNextBazaarCardBatch(state.packages, state.cursor);
-        state.cursor = batch.nextCursor;
-        state.cardsElement.insertAdjacentHTML("beforeend", batch.packages.map((item) =>
-            this._genCardHTML(item, state.bazaarType)).join(""));
-        if (batch.complete) {
-            this._stopBazaarCardWatcher(state);
-        } else {
-            this._watchBazaarCardBatch(state);
-        }
+        const bounds = state.panel.getBoundingClientRect();
+        state.cardsElement.querySelectorAll<HTMLElement>("[data-bazaar-index]").forEach((card) => {
+            const cardBounds = card.getBoundingClientRect();
+            if (cardBounds.bottom >= bounds.top - 640 && cardBounds.top <= bounds.bottom + 640) {
+                this._fillBazaarCard(state, card);
+            }
+        });
     },
     _setBazaarPanelActive(panel: Element, active: boolean) {
         this._bazaarCardRenderStates.forEach((state: IBazaarCardRenderState) => {
@@ -1794,7 +1825,10 @@ type="checkbox">
             container.innerHTML = `<div class="b3-cards b3-cards--nowrap"><ul class="b3-list b3-list--background"><li class="b3-list--empty">${window.siyuan.languages.emptyContent}</li></ul></div>`;
             return;
         }
-        container.innerHTML = '<div class="b3-cards"></div>';
+        const batch = getNextBazaarCardBatch(visiblePackages, 0);
+        container.innerHTML = `<div class="b3-cards config-bazaar__cards">${visiblePackages.map((item, index) =>
+            index < batch.nextCursor ? this._genCardHTML(item, bazaarType) :
+                `<div class="b3-card" data-bazaar-index="${index}" aria-hidden="true"></div>`).join("")}</div>`;
         const panel = container.closest(".config-bazaar__panel") as HTMLElement;
         const state: IBazaarCardRenderState = {
             container,
@@ -1802,12 +1836,12 @@ type="checkbox">
             cardsElement: container.firstElementChild as HTMLElement,
             packages: visiblePackages,
             bazaarType,
-            cursor: 0,
+            cursor: batch.nextCursor,
             active: !panel.classList.contains("fn__none"),
             mount: this._captureMount(),
         };
         this._bazaarCardRenderStates.set(container, state);
-        this._appendBazaarCardBatch(state);
+        this._watchBazaarCardBatch(state);
     },
     _onBazaar(response: IWebSocketData, bazaarType: TBazaarType, mount: IBazaarMountSnapshot) {
         if (!bazaar._isBazaarRequestCurrent(bazaarType, mount)) {

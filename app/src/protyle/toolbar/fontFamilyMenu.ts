@@ -161,7 +161,7 @@ const genFontPickerHTML = (fonts: IFontItem[], options: IFontFamilyPickerOptions
     const items = [undefined, ...fonts];
     const id = `fontFamilyPicker${++pickerID}`;
     const listID = `${id}List`;
-    const searchInput = `<input class="b3-text-field fn__flex-1" data-type="font-family-search" role="combobox" aria-expanded="true" aria-controls="${listID}" aria-label="${escapeAttr(window.siyuan.languages.fontFamily)}" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">`;
+    const searchInput = `<input spellcheck="false" class="b3-text-field fn__flex-1" data-type="font-family-search" role="combobox" aria-expanded="true" aria-controls="${listID}" aria-label="${escapeAttr(window.siyuan.languages.fontFamily)}" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">`;
     return `<div class="fn__flex-column${mobile ? "" : " b3-menu__filter"}" style="height:100%">
     <div class="fn__flex">
         ${mobile ? `<button class="block__icon block__icon--show fn__flex-center" data-action="fontFamilyBack" aria-label="${escapeAttr(window.siyuan.languages.back)}"><svg><use xlink:href="#iconLeft"></use></svg></button><span class="fn__space"></span>` : ""}
@@ -320,6 +320,7 @@ export const openFontFamilyMenu = async (target: HTMLElement, options: IFontFami
     const openMenu = () => {
         const rect = target.getBoundingClientRect();
         menu.open({x: rect.left, y: rect.bottom, h: rect.height, w: rect.width, target});
+        menu.element.querySelector(".b3-menu__items").setAttribute("style", "overflow: initial");
     };
     target.setAttribute("aria-expanded", "true");
     openMenu();

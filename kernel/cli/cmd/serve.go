@@ -49,6 +49,9 @@ var serveCmd = &cobra.Command{
 	Long:  "Start kernel HTTP server. All serving-related options below are passed to the kernel boot.",
 	// 这些 flag 由 cobra 解析（见 init），serve -h 可直接列出全部参数。
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := util.SetHomeDir(homeDirPath); err != nil {
+			return err
+		}
 		// serve 绕过 root 的初始化，但 --log-level 需在 BootWithFlags（含 logBootInfo 等启动日志）之前应用，
 		// 否则命令行指定的级别会被丢弃；同时记入 util.CLILogLevel，使随后的 model.InitConf 不再用 conf.json 覆盖。
 		if "" != logLevel {
@@ -104,7 +107,7 @@ func init() {
 	serveCmd.Flags().StringVar(&servePort, "port", "0", "port of the HTTP server")
 	serveCmd.Flags().StringVar(&serveReadOnly, "readonly", "false", "read-only mode")
 	serveCmd.Flags().StringVar(&serveAccessAuthCode, "accessAuthCode", "", "access auth code")
-	serveCmd.Flags().StringVar(&serveLang, "lang", "", "ar/de/en/es/fr/he/hi/id/it/ja/ko/nl/pl/pt-BR/ru/sk/th/tr/uk/zh-CN/zh-TW")
+	serveCmd.Flags().StringVar(&serveLang, "lang", "", "ar/de/en/es/fr/he/hi/id/it/ja/ko/nl/pl/pt-BR/ru/sk/sr/th/tr/uk/zh-CN/zh-TW")
 	serveCmd.Flags().StringVar(&serveMode, "mode", "prod", "dev/prod (non-prod values must not be used on network-exposed instances)")
 	serveCmd.Flags().BoolVar(&serveSSL, "ssl", false, "for https and wss")
 	serveCmd.Flags().BoolVar(&serveAttachUI, "attach-ui", false, "attach kernel lifecycle to desktop UI process (used by Electron)")

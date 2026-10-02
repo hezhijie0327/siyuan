@@ -1,4 +1,10 @@
 import {Divider} from "./Divider";
+import {BlockType, updateBlockTypeButton} from "./BlockType";
+import {prepareInlineElementBoundaryMutation} from "../util/inlineElementBoundary";
+import {renderMultiSelectToolbar, updateMultiSelectToolbar} from "../../mobile/util/multiSelectToolbar";
+import {selectAllLoadedBlocks} from "../wysiwyg/blockSelection";
+import {showSelectAllIncompleteTip} from "../util/selectAllTip";
+import {ContractFormData} from "../../util/contractFormData";
 import {Font, hasSameTextStyle, setFontStyle} from "./Font";
 import {
     FONT_FAMILY_EXCLUDED_BLOCK_TYPES,
@@ -56,14 +62,15 @@ import {hideElements} from "../ui/hideElements";
 import {electronUndo} from "../undo";
 import {clearTemplatePreview, mergeSameInlineElement, previewTemplate, toolbarKeyToMenu} from "./util";
 import {openTemplateManager} from "../../template/manager";
-import {showMessage} from "../../dialog/message";
+import {hideMessage, showMessage} from "../../dialog/message";
+import {getPlantumlImageBlob} from "../render/plantumlImage";
 import {InlineMath} from "./InlineMath";
 import {InlineMemo} from "./InlineMemo";
 import {mathRender} from "../render/mathRender";
 import {linkMenu} from "../../menus/protyle";
 import {addScript} from "../util/addScript";
 import {paste, pasteAsPlainText, pasteEscaped} from "../util/paste";
-import {escapeAttr, escapeHtml} from "../../util/escape";
+import {escapeAttr, escapeHtml, escapeHtmlTextAndAttr} from "../../util/escape";
 import {resizeSide} from "../../history/resizeSide";
 import {activeBlur, updateMobilePluginToolbar} from "../../mobile/util/keyboardToolbar";
 import {FormatPainter} from "./FormatPainter";
@@ -135,7 +142,7 @@ const applyPluginToolbar = (toolbar: Array<string | IMenuItem>, protyle: IProtyl
         });
         result = filterPluginToolbar(result, protyle.lite);
         result.forEach((toolbarItem) => {
-            if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|", "font-family", "font-size").includes(toolbarItem.name)) {
+            if (typeof toolbarItem === "string" || Constants.INLINE_TYPE.concat("|", "font-family", "font-size", "block-type").includes(toolbarItem.name)) {
                 return;
             }
             if (typeof toolbarItem.hotkey !== "string") {
@@ -174,6 +181,21 @@ export class Toolbar {
         const element = document.createElement("div");
         element.className = "protyle-toolbar fn__none";
         this.element = element;
+        element.addEventListener("mousedown", event => {
+            const range = this.range;
+            if (!range || range.collapsed || !(event.target as Element).closest("button")) {
+                return;
+            }
+            const start = range.startContainer.nodeType === Node.ELEMENT_NODE ?
+                range.startContainer as Element : range.startContainer.parentElement;
+            const end = range.endContainer.nodeType === Node.ELEMENT_NODE ?
+                range.endContainer as Element : range.endContainer.parentElement;
+            const title = start?.closest(".tab-item-info");
+            // 点击格式按钮时保留页签标题焦点，避免选区在 click 前因失焦而消失。
+            if (title && title === end?.closest(".tab-item-info")) {
+                event.preventDefault();
+            }
+        });
         this.subElement = document.createElement("div");
         /// #if MOBILE
         this.subElement.className = "protyle-util fn__none protyle-util--mobile";
@@ -221,9 +243,11 @@ export class Toolbar {
         if (!this.rangePosition || !this.range) {
             return;
         }
-        // 单元格内的浮动工具栏使用外层编辑器边界，避免被短单元格挤到选区上。
+        // 内嵌编辑器的浮动工具栏使用外层容器边界，避免被短单元格或脑图节点挤到选区上。
         const cellEditor = protyle.element.closest(".table__cell-editor");
-        const protyleRect = (cellEditor?.parentElement.closest(".protyle") || protyle.element).getBoundingClientRect();
+        const mindmap = protyle.element.closest(".mindmap-view");
+        const protyleRect = (mindmap || cellEditor?.parentElement.closest(".protyle") ||
+            protyle.element).getBoundingClientRect();
         const viewportBoundary = element.dataset.positionBoundary === "viewport";
         const topBoundary = viewportBoundary ? 8 : protyleRect.top + 30;
         const bottomBoundary = viewportBoundary ? window.innerHeight - 8 :
@@ -273,6 +297,8 @@ export class Toolbar {
             return;
         }
         this.range = range;
+        updateBlockTypeButton(protyle, this.element.querySelector('[data-type="block-type"]'), range);
+        applyToolbarEntryVisibility(this.element);
         this.rangePosition = undefined;
         this.isMultipleClick = (position?.detail || 0) > 1;
         const nodeElement = hasClosestBlock(range.startContainer);
@@ -717,7 +743,7 @@ export class Toolbar {
             return;
         }
 
-        const toolbarElement = isMobile() ? document.querySelector("#keyboardToolbar .keyboard__dynamic").nextElementSibling : this.element;
+        const toolbarElement = isMobile() ? document.querySelector("#keyboardToolbar .keyboard__dynamic") : this.element;
         const actionBtn = action === "toolbar" ? toolbarElement.querySelector(`[data-type="${type}"]`) : undefined;
         const remove = INLINE_FORMAT_TYPES.includes(type) && !textObj ?
             getRangesInlineFormats(ranges).includes(type) :
@@ -917,6 +943,7 @@ export class Toolbar {
                 for (let i = 0; i < attributes.length; i++) {
                     afterElement.setAttribute(attributes[i].name, attributes[i].value);
                 }
+                prepareInlineElementBoundaryMutation(this.range);
                 this.range.insertNode(document.createElement("wbr"));
                 html = nodeElement.outerHTML;
                 contents = this.range.extractContents();
@@ -941,6 +968,7 @@ export class Toolbar {
             this.range.setStartBefore(this.range.startContainer.parentElement);
         }
         if (!html) {
+            prepareInlineElementBoundaryMutation(this.range);
             this.range.insertNode(document.createElement("wbr"));
             html = nodeElement.outerHTML;
             contents = this.range.extractContents();
@@ -987,7 +1015,7 @@ export class Toolbar {
                 }
             });
         }
-        const toolbarElement = isMobile() ? document.querySelector("#keyboardToolbar .keyboard__dynamic").nextElementSibling : this.element;
+        const toolbarElement = isMobile() ? document.querySelector("#keyboardToolbar .keyboard__dynamic") : this.element;
         const actionBtn = action === "toolbar" ? toolbarElement.querySelector(`[data-type="${type}"]`) : undefined;
         const newNodes: Node[] = [];
         let startContainer: Node;
@@ -1492,8 +1520,8 @@ export class Toolbar {
                 }
             });
         }
-        let title = "HTML";
-        let placeholder = "";
+        let title = types.includes("NodeCodeBlock") ? window.siyuan.languages.code : "HTML";
+        const placeholder = "";
         const isInlineMemo = types.includes("inline-memo");
         switch (renderElement.getAttribute("data-subtype")) {
             case "abc":
@@ -1510,12 +1538,6 @@ export class Toolbar {
                 break;
             case "mermaid":
                 title = "Mermaid";
-                break;
-            case "mindmap":
-                placeholder = `- foo
-  - bar
-- baz`;
-                title = window.siyuan.languages.mindmap;
                 break;
             case "plantuml":
                 title = "UML";
@@ -1545,17 +1567,17 @@ export class Toolbar {
         ${title}
     </span>
     <span class="fn__space"></span>
-    <button data-type="refresh" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw block__icon--active${types.includes("NodeBlockQueryEmbed") ? " fn__none" : ""}" aria-label="${window.siyuan.languages.refresh}"><svg><use xlink:href="#iconRefresh"></use></svg></button>
+    <button data-type="refresh" class="block__icon block__icon--show b3-tooltips b3-tooltips__n block__icon--active${types.includes("NodeBlockQueryEmbed") ? " fn__none" : ""}" aria-label="${window.siyuan.languages.refresh}"><svg><use xlink:href="#iconRefresh"></use></svg></button>
     <span class="fn__space"></span>
-    <button data-type="before" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw${protyle.disabled ? " fn__none" : ""}" aria-label="${window.siyuan.languages.insertBefore}"><svg><use xlink:href="#iconBefore"></use></svg></button>
+    <button data-type="before" class="block__icon block__icon--show b3-tooltips b3-tooltips__n${protyle.disabled ? " fn__none" : ""}" aria-label="${window.siyuan.languages.insertBefore}"><svg><use xlink:href="#iconBefore"></use></svg></button>
     <span class="fn__space${protyle.disabled ? " fn__none" : ""}"></span>
-    <button data-type="after" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw${protyle.disabled ? " fn__none" : ""}" aria-label="${window.siyuan.languages.insertAfter}"><svg><use xlink:href="#iconAfter"></use></svg></button>
+    <button data-type="after" class="block__icon block__icon--show b3-tooltips b3-tooltips__n${protyle.disabled ? " fn__none" : ""}" aria-label="${window.siyuan.languages.insertAfter}"><svg><use xlink:href="#iconAfter"></use></svg></button>
     <span class="fn__space${protyle.disabled ? " fn__none" : ""}"></span>
-    <button data-type="export" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw${getHostCapabilities().importExport ? "" : " fn__none"}" aria-label="${window.siyuan.languages.export} ${window.siyuan.languages.image}"><svg><use xlink:href="#iconImage"></use></svg></button>
-    <span class="fn__space${getHostCapabilities().importExport ? "" : " fn__none"}"></span>
-    <button data-type="pin" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw" aria-label="${window.siyuan.languages.pin}"><svg><use xlink:href="#iconPin"></use></svg></button>
+    <button data-type="export" class="block__icon block__icon--show b3-tooltips b3-tooltips__n${getHostCapabilities().documentImportExport ? "" : " fn__none"}" aria-label="${window.siyuan.languages.export} ${window.siyuan.languages.image}"><svg><use xlink:href="#iconImage"></use></svg></button>
+    <span class="fn__space${getHostCapabilities().documentImportExport ? "" : " fn__none"}"></span>
+    <button data-type="pin" class="block__icon block__icon--show b3-tooltips b3-tooltips__n" aria-label="${window.siyuan.languages.pin}"><svg><use xlink:href="#iconPin"></use></svg></button>
     <span class="fn__space"></span>
-    <button data-type="close" class="block__icon block__icon--show b3-tooltips b3-tooltips__nw" aria-label="${window.siyuan.languages.close}"><svg><use xlink:href="#iconClose"></use></svg></button>
+    <button data-type="close" class="block__icon block__icon--show b3-tooltips b3-tooltips__n" aria-label="${window.siyuan.languages.close}"><svg><use xlink:href="#iconClose"></use></svg></button>
 </div>
 <div class="protyle-util__scroll"><div class="fn__flex"><div class="protyle-linenumber__rows"></div><textarea ${protyle.disabled ? " readonly" : ""} spellcheck="false" class="b3-text-field b3-text-field--text fn__flex-1" placeholder="${placeholder}" style="overflow:hidden;resize:none;font-family: var(--b3-font-family-editor-code, var(--b3-font-family-code));font-weight: var(--b3-font-weight-editor-code, 400);"></textarea></div></div></div>
 <div class="resize__rd"></div><div class="resize__ld"></div><div class="resize__lt"></div><div class="resize__rt"></div><div class="resize__r"></div><div class="resize__d"></div><div class="resize__t"></div><div class="resize__l"></div>`;
@@ -1670,20 +1692,23 @@ export class Toolbar {
             }
         });
         const exportImg = () => {
-            if (!getHostCapabilities().importExport) {
+            if (!getHostCapabilities().documentImportExport) {
                 return;
             }
             const msgId = showMessage(window.siyuan.languages.exporting, 0);
             if (renderElement.getAttribute("data-subtype") === "plantuml") {
-                fetch(renderElement.querySelector("object").getAttribute("data")).then(function (response) {
-                    return response.blob();
-                }).then(function (blob) {
-                    const formData = new FormData();
-                    formData.append("file", blob);
-                    formData.append("type", "image/svg+xml");
-                    fetchPost("/api/export/exportAsFile", formData, (response) => {
+                getPlantumlImageBlob(renderElement).then(async (blob) => {
+                    if (!blob) {
+                        return;
+                    }
+                    const formData = new ContractFormData({file: blob, type: blob.type.split(";")[0]});
+                    await fetchPost("/api/export/exportAsFile", formData, (response) => {
                         saveExportFile(response.data.file, msgId);
                     });
+                }).catch((error) => {
+                    showMessage(escapeHtml(String(error)), 6000, "error");
+                }).finally(() => {
+                    hideMessage(msgId);
                 });
                 return;
             }
@@ -1692,9 +1717,7 @@ export class Toolbar {
                     (renderElement as HTMLHtmlElement).style.display = "inline-block";
                     window.htmlToImage.toBlob(renderElement).then(blob => {
                         (renderElement as HTMLHtmlElement).style.display = "";
-                        const formData = new FormData();
-                        formData.append("file", blob);
-                        formData.append("type", "image/png");
+                        const formData = new ContractFormData({file: blob, type: "image/png"});
                         fetchPost("/api/export/exportAsFile", formData, (response) => {
                             saveExportFile(response.data.file, msgId);
                         });
@@ -1735,7 +1758,7 @@ export class Toolbar {
                     }
                 });
             } else {
-                renderElement.setAttribute("data-content", Lute.EscapeHTMLStr(textElement.value));
+                renderElement.setAttribute("data-content", escapeHtmlTextAndAttr(textElement.value));
                 renderElement.removeAttribute("data-render");
             }
             if (!types.includes("NodeBlockQueryEmbed") || !types.includes("NodeHTMLBlock") || !isInlineMemo) {
@@ -1826,7 +1849,7 @@ export class Toolbar {
             } else if (types.includes("inline-math") && !noChange) {
                 // 行内数学公式不允许换行 https://github.com/siyuan-note/siyuan/issues/2187
                 if (textElement.value) {
-                    renderElement.setAttribute("data-content", Lute.EscapeHTMLStr(textElement.value));
+                    renderElement.setAttribute("data-content", escapeHtmlTextAndAttr(textElement.value));
                     renderElement.removeAttribute("data-render");
                     processRender(renderElement);
                 } else {
@@ -1835,7 +1858,7 @@ export class Toolbar {
                     renderElement.outerHTML = "<wbr>";
                 }
             } else if (!noChange) {
-                renderElement.setAttribute("data-content", Lute.EscapeHTMLStr(textElement.value));
+                renderElement.setAttribute("data-content", escapeHtmlTextAndAttr(textElement.value));
                 renderElement.removeAttribute("data-render");
                 if (types.includes("NodeBlockQueryEmbed")) {
                     blockRender(protyle, renderElement);
@@ -1861,6 +1884,16 @@ export class Toolbar {
                     } else if (renderElement.parentElement) {
                         if (focusBeforeRender) {
                             this.range.setStartBefore(renderElement);
+                        } else if (types.includes("inline-math")) {
+                            // 在公式外的文本节点中恢复光标，为输入法提供可编辑的组合输入位置。
+                            let textNode = renderElement.nextSibling as Text;
+                            if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+                                textNode = document.createTextNode(Constants.ZWSP);
+                                renderElement.after(textNode);
+                            } else if (!textNode.data.startsWith(Constants.ZWSP)) {
+                                textNode.insertData(0, Constants.ZWSP);
+                            }
+                            this.range.setStart(textNode, 1);
                         } else {
                             this.range.setStartAfter(renderElement);
                         }
@@ -1941,7 +1974,7 @@ export class Toolbar {
         window.siyuan.menus.menu.remove();
         this.range = getEditorRange(nodeElement);
         this.subElement.innerHTML = `<div data-id="codeLanguage" class="fn__flex-column" style="max-height:50vh">
-    <input placeholder="${window.siyuan.languages.searchPlaceholder}" style="margin: 0 8px 4px 8px" class="b3-text-field"/>
+    <input spellcheck="false" placeholder="${window.siyuan.languages.searchPlaceholder}" style="margin: 0 8px 4px 8px" class="b3-text-field"/>
     <div class="b3-list fn__flex-1 b3-list--background" style="position: relative"></div>
 </div>`;
         const listElement = this.subElement.lastElementChild.lastElementChild as HTMLElement;
@@ -2079,39 +2112,22 @@ export class Toolbar {
         blockElement.classList.add("protyle-wysiwyg--select");
         window.siyuan.menus.menu.remove();
         this.subElement.style.width = window.innerWidth - 16 + "px";
-        this.subElement.style.padding = "0";
-        this.subElement.innerHTML = `<div class="block__icons">
-    <div class="block__logo">
-        <svg class="block__logoicon"><use xlink:href="#iconCheck"></use></svg> 
-        <span class="multiSelectCount">${protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select").length}</span>
-    </div>
-    <span class="fn__flex-1"></span>
-    <button class="block__icon block__icon--show" data-type="menu" data-menu="true"><svg><use xlink:href="#iconMore"></use></svg></button>
-    <span class="fn__space"></span>
-    <button class="block__icon block__icon--show" data-type="exitMultiSelectMode"><svg><use xlink:href="#iconClose"></use></svg></button>
-</div>`;
+        renderMultiSelectToolbar(this.subElement, protyle.wysiwyg.element.querySelectorAll(".protyle-wysiwyg--select").length, () => {
+            protyle.gutter.renderMenu(protyle, protyle.wysiwyg.element.querySelector(".protyle-wysiwyg--select"));
+            window.siyuan.menus.menu.fullscreen();
+        }, () => {
+            this.subElement.classList.add("fn__none");
+            this.subElement.innerHTML = "";
+            hideElements(["select"], protyle);
+        }, () => {
+            window.getSelection()?.removeAllRanges();
+            activeBlur();
+            const elements = selectAllLoadedBlocks(protyle.wysiwyg.element);
+            updateMultiSelectToolbar(this.subElement, elements.length);
+            showSelectAllIncompleteTip(protyle);
+        });
         this.subElement.style.zIndex = (++window.siyuan.zIndex).toString();
         this.subElement.classList.remove("fn__none");
-        this.subElement.firstElementChild.addEventListener("click", (event) => {
-            let target = event.target as HTMLElement;
-            while (target && target !== this.subElement) {
-                if (target.dataset.type === "exitMultiSelectMode") {
-                    this.subElement.classList.add("fn__none");
-                    this.subElement.innerHTML = "";
-                    hideElements(["select"], protyle);
-                    event.preventDefault();
-                    event.stopPropagation();
-                    break;
-                } else if (target.dataset.type === "menu") {
-                    protyle.gutter.renderMenu(protyle, protyle.wysiwyg.element.querySelector(".protyle-wysiwyg--select"));
-                    window.siyuan.menus.menu.fullscreen();
-                    event.preventDefault();
-                    event.stopPropagation();
-                    break;
-                }
-                target = target.parentElement;
-            }
-        });
         setPosition(this.subElement, 8, 8);
         this.element.classList.add("fn__none");
         activeBlur();
@@ -2299,7 +2315,7 @@ export class Toolbar {
         hideElements(["hint"], protyle);
         window.siyuan.menus.menu.remove();
         this.subElement.innerHTML = `<div class="fn__flex-column" style="max-height:50vh">
-    <input style="margin: 0 8px 4px 8px" class="b3-text-field"/>
+    <input spellcheck="false" style="margin: 0 8px 4px 8px" class="b3-text-field"/>
     <div class="b3-list fn__flex-1 b3-list--background" style="position: relative"><img style="margin: 0 auto;display: block;width: 64px;height:64px" src="/stage/loading-pure.svg"></div>
 </div>`;
         const listElement = this.subElement.lastElementChild.lastElementChild as HTMLElement;
@@ -2386,21 +2402,21 @@ export class Toolbar {
         const hasCopy = stripSemanticMarkersFromRangeText(range).split(Constants.ZWSP).join("") !== "" ||
             (range.cloneContents().childNodes[0] as HTMLElement)?.classList?.contains("emoji");
         if (hasCopy) {
-            html += '<button class="keyboard__action" data-action="copy"><svg><use xlink:href="#iconCopy"></use></svg></button>';
+            html += `<button class="keyboard__action" data-action="copy" aria-label="${window.siyuan.languages.copy}"><svg><use xlink:href="#iconCopy"></use></svg></button>`;
             if (!protyle.disabled) {
-                html += `<button class="keyboard__action" data-action="cut"><svg><use xlink:href="#iconCut"></use></svg></button>
-<button class="keyboard__action" data-action="delete"><svg><use xlink:href="#iconTrashcan"></use></svg></button>`;
+                html += `<button class="keyboard__action" data-action="cut" aria-label="${window.siyuan.languages.cut}"><svg><use xlink:href="#iconCut"></use></svg></button>
+<button class="keyboard__action" data-action="delete" aria-label="${window.siyuan.languages.delete}"><svg><use xlink:href="#iconTrashcan"></use></svg></button>`;
             }
         }
         if (!protyle.disabled) {
-            html += `<button class="keyboard__action" data-action="paste"><svg><use xlink:href="#iconPaste"></use></svg></button>
-<button class="keyboard__action" data-action="select"><svg><use xlink:href="#iconSelect"></use></svg></button>`;
+            html += `<button class="keyboard__action" data-action="paste" aria-label="${window.siyuan.languages.paste}"><svg><use xlink:href="#iconPaste"></use></svg></button>
+<button class="keyboard__action" data-action="select" aria-label="${window.siyuan.languages.select}"><svg><use xlink:href="#iconSelect"></use></svg></button>`;
         }
         if (pluginMenus.length > 0) {
             html += `<button class="keyboard__action" data-action="plugin" data-menu="true" aria-label="${window.siyuan.languages.plugin}"><svg><use xlink:href="#iconPlugin"></use></svg></button>`;
         }
         if (hasCopy || !protyle.disabled) {
-            html += '<button class="keyboard__action" data-action="more"><svg><use xlink:href="#iconMore"></use></svg></button>';
+            html += `<button class="keyboard__action" data-action="more" aria-label="${window.siyuan.languages.more}"><svg><use xlink:href="#iconMore"></use></svg></button>`;
         }
         this.subElement.innerHTML = `<div class="fn__flex">${html}</div>`;
         const setContentPosition = () => {
@@ -2430,6 +2446,7 @@ export class Toolbar {
                 this.subElement.classList.add("fn__none");
             } else if (action === "delete") {
                 const currentRange = getEditorRange(nodeElement);
+                prepareInlineElementBoundaryMutation(currentRange);
                 currentRange.insertNode(document.createElement("wbr"));
                 const oldHTML = nodeElement.outerHTML;
                 currentRange.extractContents();
@@ -2451,11 +2468,19 @@ export class Toolbar {
                 }
                 this.subElement.classList.add("fn__none");
             } else if (action === "select") {
-                selectAll(protyle, nodeElement, range);
-                this.subElement.classList.add("fn__none");
+                if (selectAll(protyle, nodeElement, range, !!protyle.gutter)) {
+                    this.showContent(protyle, range, nodeElement, pluginMenus);
+                } else {
+                    const selectedElement = protyle.wysiwyg.element.querySelector<HTMLElement>(".protyle-wysiwyg--select");
+                    if (selectedElement && protyle.gutter) {
+                        this.showMultiSelectMode(protyle, selectedElement);
+                    } else {
+                        this.subElement.classList.add("fn__none");
+                    }
+                }
             } else if (action === "copyPlainText") {
                 focusByRange(getEditorRange(nodeElement));
-                copyPlainText(getSelection().getRangeAt(0).toString());
+                copyPlainText(stripSemanticMarkersFromRangeText(getSelection().getRangeAt(0)));
                 this.subElement.classList.add("fn__none");
             } else if (action === "pasteAsPlainText") {
                 focusByRange(getEditorRange(nodeElement));
@@ -2486,7 +2511,7 @@ export class Toolbar {
 <div class="keyboard__split${protyle.disabled ? " fn__none" : ""}"></div>
 <button class="keyboard__action${protyle.disabled ? " fn__none" : ""}" data-action="pasteEscaped"><span>${window.siyuan.languages.pasteEscaped}</span></button>
 <div class="keyboard__split${protyle.disabled ? " fn__none" : ""}"></div>
-<button class="keyboard__action" data-action="back"><svg><use xlink:href="#iconBack"></use></svg></button>`;
+<button class="keyboard__action" data-action="back" aria-label="${window.siyuan.languages.back}"><svg><use xlink:href="#iconBack"></use></svg></button>`;
                 setContentPosition();
             }
         });
@@ -2508,6 +2533,9 @@ export class Toolbar {
     private genItem(protyle: IProtyle, menuItem: IMenuItem) {
         let menuItemObj;
         switch (menuItem.name) {
+            case "block-type":
+                menuItemObj = new BlockType(protyle, menuItem);
+                break;
             case "strong":
             case "em":
             case "s":

@@ -78,8 +78,8 @@ type CreateAttributeViewItemDocsResult struct {
 }
 
 // CreateAttributeViewItem 按指定模板创建一个数据库条目。templateID 为空时创建空白游离条目。
-func CreateAttributeViewItem(avID, blockID, viewID, templateID, previousID, groupID string) (*CreateAttributeViewItemResult, error) {
-	return createAttributeViewItem(avID, blockID, viewID, templateID, previousID, groupID, nil)
+func CreateAttributeViewItem(avID, blockID, viewID, templateID, previousID, groupID string, calendarDates ...*int64) (*CreateAttributeViewItemResult, error) {
+	return createAttributeViewItem(avID, blockID, viewID, templateID, previousID, groupID, nil, calendarDates...)
 }
 
 // CreateAttributeViewItemWithMarkdown 按指定的文档类型模板创建数据库条目，并使用传入的 Markdown 创建绑定文档。
@@ -92,7 +92,7 @@ func CreateAttributeViewItemWithMarkdown(avID, blockID, viewID, templateID, prev
 }
 
 func createAttributeViewItem(avID, blockID, viewID, templateID, previousID, groupID string,
-	document *CreateAttributeViewItemMarkdown) (*CreateAttributeViewItemResult, error) {
+	document *CreateAttributeViewItemMarkdown, calendarDates ...*int64) (*CreateAttributeViewItemResult, error) {
 	attrView, err := avParseView(avID, blockID)
 	if nil != err {
 		return nil, err
@@ -145,6 +145,11 @@ func createAttributeViewItem(avID, blockID, viewID, templateID, previousID, grou
 	if nil != err {
 		return nil, err
 	}
+	if len(calendarDates) > 0 && nil != calendarDates[0] {
+		if err = setNewCalendarItemDate(attrView, blockID, viewID, *calendarDates[0], fieldValues); nil != err {
+			return nil, err
+		}
+	}
 	filterContext, err := resolveAttributeViewFilterContext(attrView, nil, blockID)
 	if nil != err {
 		return nil, err
@@ -156,6 +161,12 @@ func createAttributeViewItem(avID, blockID, viewID, templateID, previousID, grou
 	applyAttributeViewContextFilterDefaultValue(attrView, itemID, filterContext, fieldValues)
 	boundBlockID := itemID
 	isDetached := av.NewItemTargetDocument != itemTemplate.TargetType
+	if isDetached && itemTemplate.Icon != "" {
+		fieldValues[attrView.GetBlockKeyValues().Key.ID] = &av.Value{
+			Type: av.KeyTypeBlock, IsDetached: true,
+			Block: &av.ValueBlock{Content: preview.PrimaryKey, Icon: itemTemplate.Icon},
+		}
+	}
 	var createdTree *parse.Tree
 	if !isDetached {
 		boundBlockID, createdTree, err = createAttributeViewItemDocumentWithMarkdown(preview, itemTemplate, document)
@@ -273,7 +284,12 @@ func CreateAttributeViewItemDocs(avID, blockID, saveMode string, itemIDs []strin
 		return cleanupErr
 	}
 	for _, item := range items {
-		item.docID, item.tree, err = createAttributeViewItemDocument(item.preview, itemTemplate)
+		// 条目已设置的图标优先用于新建文档，未设置时沿用文档模板。
+		documentTemplate := *itemTemplate
+		if icon, valid := util.FilterIconValue(item.original.Block.Icon); valid && icon != "" {
+			documentTemplate.Icon = icon
+		}
+		item.docID, item.tree, err = createAttributeViewItemDocument(item.preview, &documentTemplate)
 		if nil != err {
 			return nil, newItemCreationError(err, cleanupCreatedDocs())
 		}

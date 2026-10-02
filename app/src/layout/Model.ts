@@ -3,9 +3,6 @@ import {Constants} from "../constants";
 import type {Tab} from "./Tab";
 /// #endif
 import type {App} from "../index";
-import {kernelError} from "../util/kernelFault";
-import {processMessage} from "../util/processMessage";
-import {reloadSync} from "../util/reloadSync";
 
 interface IConnectOptions {
     id: string,
@@ -39,6 +36,8 @@ export class Model {
     }
 
     private processWebSocketMessage(data: string, callback: (data: IWebSocketData) => void) {
+        // 消息处理依赖面板子类，调用时加载以避免基类初始化期间形成循环依赖。
+        const {processMessage}: typeof import("../util/processMessage") = require("../util/processMessage");
         callback.call(this, processMessage(JSON.parse(data)));
     }
 
@@ -51,17 +50,28 @@ export class Model {
                 console.error("Failed to process queued WebSocket message:", error);
             }
         });
+        if (window.siyuan.isReady) {
+            const {refreshSettingConfig}: typeof import("../config/setting/sync") = require("../config/setting/sync");
+            void refreshSettingConfig();
+        }
     }
 
     public connect(options: IConnectOptions) {
         const websocketURL = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
         const ws = new WebSocket(`${websocketURL}?app=${Constants.SIYUAN_APPID}&id=${options.id}${options.type ? "&type=" + options.type : ""}`);
         ws.onopen = () => {
+            if (options.type === "main" && window.siyuan.isReady) {
+                const {resetSettingTaskRevision}: typeof import("../config/setting/taskBlocker") = require("../config/setting/taskBlocker");
+                resetSettingTaskRevision();
+                const {refreshSettingConfig}: typeof import("../config/setting/sync") = require("../config/setting/sync");
+                void refreshSettingConfig();
+            }
             if (options.callback) {
                 options.callback.call(this);
             }
             const logElement = document.getElementById("errorLog");
             if (logElement) {
+                const {reloadSync}: typeof import("../util/reloadSync") = require("../util/reloadSync");
                 // 内核中断后无法 catch fetch 请求错误，重连会导致无法执行 transactionsTimeout
                 reloadSync(this.app, {upsertRootIDs: [], removeRootIDs: []});
                 window.siyuan.dialogs.find(item => {
@@ -96,16 +106,13 @@ export class Model {
             if (0 > ev.reason.indexOf("close websocket")) {
                 console.warn("WebSocket is closed. Reconnect will be attempted in 3 second.", ev);
                 setTimeout(() => {
-                    this.connect({
-                        id: options.id,
-                        type: options.type,
-                        msgCallback: options.msgCallback
-                    });
+                    this.connect(options);
                 }, 3000);
             }
         };
         ws.onerror = (err: Event & { target: { url: string, readyState: number } }) => {
             if (err.target.url.endsWith("&type=main") && err.target.readyState === 3) {
+                const {kernelError}: typeof import("../util/kernelFault") = require("../util/kernelFault");
                 kernelError();
             }
         };

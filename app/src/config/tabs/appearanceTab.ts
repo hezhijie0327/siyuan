@@ -13,6 +13,7 @@ import {getFrontend, isBrowser, isMobile, objEquals} from "../../util/functions"
 import {exitSiYuan} from "../../dialog/processSystem";
 import {isInMobileApp} from "../../protyle/util/compatibility";
 import {fetchPost, fetchSyncPost} from "../../util/fetch";
+import {ContractFormData} from "../../util/contractFormData";
 import {openLink} from "../../editor/openLink";
 import {openSnippets} from "../util/snippets";
 import {getHostCapabilities} from "../../util/hostCapabilities";
@@ -31,7 +32,7 @@ import {setEditorFontSize} from "../../util/editorFontSize";
 import {
     ICustomFont,
     invalidateCustomFonts,
-    isNativeMobileContainer,
+    supportsCustomFonts,
     loadCustomFonts,
     registerCustomFont,
     unregisterCustomFont
@@ -47,6 +48,8 @@ import {
 /// #if MOBILE
 import {genMobileBottomBarSettingHTML, mountMobileBottomBarSetting} from "../../mobile/util/mobileBottomBar";
 import {genMobileSidePanelSettingHTML, mountMobileSidePanelSetting} from "../../mobile/util/mobileSidePanelSetting";
+import {genSidebarSettingHTML, mountSidebarSetting} from "../../mobile/util/sidebarSetting";
+import {genMobileBarsSettingHTML, mountMobileBarsSetting} from "../../mobile/util/mobileBarsSetting";
 /// #endif
 import {genEntryVisibilityHtml, mountEntryVisibility} from "../entryVisibility/ui";
 import {genBodyGradientHtml, mountBodyGradient} from "./bodyGradient";
@@ -79,13 +82,13 @@ const isCodeFont = (font: Pick<IFontItem, "spacing">) =>
     font.spacing === "monospace" || font.spacing === "dual" || font.spacing === "character-cell";
 
 const loadAvailableFonts = async () => {
-    const nativeMobile = isNativeMobileContainer();
+    const customFontSupported = supportsCustomFonts();
     const [systemFonts, customFonts] = await Promise.all([
         loadSystemFonts(),
-        nativeMobile ? loadCustomFonts() : Promise.resolve([] as ICustomFont[])
+        customFontSupported ? loadCustomFonts() : Promise.resolve([] as ICustomFont[])
     ]);
     return {
-        nativeMobile,
+        customFontSupported,
         customFonts,
         fontItems: [...customFonts, ...systemFonts],
     };
@@ -160,6 +163,11 @@ const registerAppearanceContentGroup = (tab: SettingTabBuilder) => {
         title: window.siyuan.languages.rtl,
         desc: window.siyuan.languages.rtlTip,
         save: (value) => editorConfigApi.patch("editor.rtl", value),
+    });
+    group.switch("editor.autoDirection", {
+        title: window.siyuan.languages.autoDirection,
+        desc: window.siyuan.languages.autoDirectionTip,
+        save: (value) => editorConfigApi.patch("editor.autoDirection", value),
     });
 };
 
@@ -313,29 +321,23 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
     };
     const persistFonts = (fonts: IFontItem[]) => {
         const globalFont = configKey === "globalFontFamilies";
-        fetchPost(
-            globalFont ? "/api/setting/setAppearance" : "/api/setting/setEditor",
-            {
-                ...(globalFont ? window.siyuan.config.appearance : window.siyuan.config.editor),
-                [configKey]: fonts.map((font) => ({
-                    family: font.family,
-                    weight: font.weight,
-                    displayName: font.displayName,
-                })),
-            },
-            (response) => {
-                if (globalFont) {
-                    appearanceConfigApi.apply(response.data);
-                } else {
-                    editorConfigApi.apply(response.data);
-                }
-                const config = getFontConfig();
-                selectedFonts = getConfiguredFonts(config, configKey);
-                renderSelectedFonts();
-                refreshMountedFontConfigs(config, fontConfigElement);
-                refreshOpenMenu?.();
-            }
-        );
+        const configuredFonts = fonts.map((font) => ({
+            family: font.family,
+            weight: font.weight,
+            displayName: font.displayName,
+        }));
+        const refreshFonts = () => {
+            const config = getFontConfig();
+            selectedFonts = getConfiguredFonts(config, configKey);
+            renderSelectedFonts();
+            refreshMountedFontConfigs(config, fontConfigElement);
+            refreshOpenMenu?.();
+        };
+        if (globalFont) {
+            void appearanceConfigApi.patch("globalFontFamilies", configuredFonts, refreshFonts);
+        } else {
+            void editorConfigApi.patch(configKey, configuredFonts, refreshFonts);
+        }
     };
     bindSelectedFontList(selectedListElement, () => selectedFonts, persistFonts, (chip, index, event) => {
         openFontWeightMenu(chip, index, event);
@@ -372,7 +374,7 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
             fontMenu.close();
             return;
         }
-        const {nativeMobile, customFonts, fontItems} = availableFonts;
+        const {customFontSupported, customFonts, fontItems} = availableFonts;
         selectedFonts = getConfiguredFonts(getFontConfig(), configKey).map((selectedFont) =>
             fontItems.find((font) => font.family === selectedFont.family && font.weight === selectedFont.weight) ||
             selectedFont);
@@ -381,7 +383,7 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
             genFontListItemHtml(item, selectedFonts.some((font) =>
                 font.family === item.family && font.weight === item.weight))
         ).join("");
-        const canManageCustomFonts = nativeMobile && !window.siyuan.config.readonly;
+        const canManageCustomFonts = customFontSupported && !window.siyuan.config.readonly;
         const canShowAllFonts = configKey === "codeFontFamilies" && fontItems.some((font) => !isCodeFont(font));
         const customFontsByID = new Map(customFonts.map((font) => [font.id, font]));
         fontMenu.addItem({
@@ -389,11 +391,11 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
             type: "empty",
             label: `<div class="fn__flex-column b3-menu__filter">
     <div class="fn__flex">
-        <input class="b3-text-field fn__flex-1" data-type="font-search" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">
+        <input spellcheck="false" class="b3-text-field fn__flex-1" data-type="font-search" placeholder="${escapeAttr(window.siyuan.languages.searchPlaceholder)}">
         ${canShowAllFonts ? `<span class="fn__space"></span><button class="b3-button b3-button--outline fn__flex-center" data-type="show-all-fonts">${escapeHtml(window.siyuan.languages.showAll)}</button>` : ""}
         ${canManageCustomFonts ? `<span class="fn__space"></span><button class="b3-button b3-button--outline fn__flex-center" data-type="import-font"><svg><use xlink:href="#iconDownload"></use></svg>${escapeHtml(window.siyuan.languages.importFont)}</button>` : ""}
     </div>
-    ${nativeMobile ? `<div class="b3-label__text ft__on-surface" style="margin-top: 8px">${escapeHtml(window.siyuan.languages.fontFileTip)}</div>` : ""}
+    ${customFontSupported ? `<div class="b3-label__text ft__on-surface" style="margin-top: 8px">${escapeHtml(window.siyuan.languages.fontFileTip)}</div>` : ""}
     ${canManageCustomFonts ? '<input class="fn__none" data-type="font-file" type="file" accept=".ttf,.otf,font/ttf,font/otf">' : ""}
     <div class="fn__hr"></div>
     <div class="b3-list fn__flex-1 b3-list--background" data-type="available-fonts">${fontItemHtml}</div>
@@ -494,10 +496,12 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
                         showMessage(window.siyuan.languages.fontFileTip, 6000, "error");
                         return;
                     }
-                    const formData = new FormData();
-                    formData.append("file", file);
+                    const formData = new ContractFormData({file});
                     fetchPost("/api/system/importCustomFont", formData, (response) => {
-                        const font = response.data as ICustomFont;
+                        if (response.code !== 0) {
+                            return;
+                        }
+                        const font = response.data;
                         invalidateCustomFonts();
                         registerCustomFont(font);
                         persistFonts([...selectedFonts.filter((item) => item.family !== font.family), font]);
@@ -519,6 +523,9 @@ const mountAppearanceFontFamily = (root: HTMLElement, configKey: FontFamiliesCon
                                 "${x}", `<b>${escapeHtml(itemEl.dataset.name)}</b>`),
                             () => {
                                 fetchPost("/api/system/removeCustomFont", {id}, (response) => {
+                                    if (response.code !== 0) {
+                                        return;
+                                    }
                                     unregisterCustomFont(id);
                                     invalidateCustomFonts();
                                     if (response.data.appearance) {
@@ -793,7 +800,7 @@ const registerAppearanceInterfaceGroup = (tab: SettingTabBuilder) => {
             afterMount: (root) => {
                 /// #if !BROWSER
                 root.querySelector("#appearanceOpenTheme")?.addEventListener("click", () => {
-                    useShell("openPath", path.join(window.siyuan.config.system.confDir, "appearance", "themes"));
+                    useShell("openPath", path.join(window.siyuan.config.system.dataDir, "themes"));
                 });
                 /// #endif
             },
@@ -835,7 +842,7 @@ const registerAppearanceInterfaceGroup = (tab: SettingTabBuilder) => {
             afterMount: (root) => {
                 /// #if !BROWSER
                 root.querySelector("#appearanceOpenIcon")?.addEventListener("click", () => {
-                    useShell("openPath", path.join(window.siyuan.config.system.confDir, "appearance", "icons"));
+                    useShell("openPath", path.join(window.siyuan.config.system.dataDir, "icons"));
                 });
                 /// #endif
             },
@@ -890,6 +897,18 @@ const registerAppearanceControlsGroup = (tab: SettingTabBuilder) => {
 
     /// #if MOBILE
     group.slot({
+        key: "mobileSidebarAccess",
+        keywords: [window.siyuan.languages.mobileSidebarSwipe, window.siyuan.languages.mobileSidebarButtons],
+        html: genSidebarSettingHTML,
+        afterMount: mountSidebarSetting,
+    });
+    group.slot({
+        key: "mobileBarsAutoHide",
+        keywords: [window.siyuan.languages.mobileBarsAutoHide, window.siyuan.languages.mobileBarsAutoHideTip],
+        html: genMobileBarsSettingHTML,
+        afterMount: mountMobileBarsSetting,
+    });
+    group.slot({
         key: "mobileBottomBar",
         keywords: [
             window.siyuan.languages.mobile,
@@ -914,7 +933,9 @@ const registerAppearanceControlsGroup = (tab: SettingTabBuilder) => {
     /// #endif
     group.slot({
         key: "entryVisibility",
-        keywords: [window.siyuan.languages.entryVisibility, window.siyuan.languages.entryVisibilityTip],
+        keywords: [window.siyuan.languages.entryVisibility, window.siyuan.languages.entryVisibilityTip,
+            window.siyuan.languages.entryToolbar, window.siyuan.languages.entrySlashMenu,
+            ...(isMobile() ? [window.siyuan.languages.mobileToolbarEntryTip] : [])],
         html: genEntryVisibilityHtml,
         afterMount: mountEntryVisibility,
     });
@@ -1130,10 +1151,7 @@ const mountAppearanceSetStatusBar = (root: HTMLElement) => {
                 if (objEquals(statusBar, window.siyuan.config.appearance.statusBar)) {
                     return;
                 }
-                fetchPost("/api/setting/setAppearance", {
-                    ...window.siyuan.config.appearance,
-                    statusBar
-                });
+                void appearanceConfigApi.patch("statusBar", statusBar);
             }
         });
     });
@@ -1191,10 +1209,7 @@ const mountAppearanceSetNotifications = (root: HTMLElement) => {
                 if (objEquals(notifications, window.siyuan.config.appearance.notifications)) {
                     return;
                 }
-                fetchPost("/api/setting/setAppearance", {
-                    ...window.siyuan.config.appearance,
-                    notifications
-                });
+                void appearanceConfigApi.patch("notifications", notifications);
             }
         });
     });

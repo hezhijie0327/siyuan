@@ -170,6 +170,32 @@ func TestIsSensitivePathWorkspaceFilesNotBlocked(t *testing.T) {
 	}
 }
 
+func TestIsSensitivePathWorkspaceAssetSymlink(t *testing.T) {
+	originalHome, originalWorkspace := HomeDir, WorkspaceDir
+	HomeDir, WorkspaceDir = t.TempDir(), t.TempDir()
+	t.Cleanup(func() { HomeDir, WorkspaceDir = originalHome, originalWorkspace })
+	target := filepath.Join(HomeDir, ".config", "example")
+	if err := os.MkdirAll(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "existing.txt"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	assets := filepath.Join(WorkspaceDir, "data", "assets")
+	if err := os.MkdirAll(assets, 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(assets, "linked")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("create asset symlink: %v", err)
+	}
+	for _, relative := range []string{"existing.txt", filepath.Join("missing", "example.txt")} {
+		if path := filepath.Join(link, relative); IsSensitivePath(path) {
+			t.Errorf("workspace asset symlink should remain allowed: %s", path)
+		}
+	}
+}
+
 // TestIsSensitivePathSymlinkWorkspace 验证工作空间父目录为符号链接时的真实路径判定。
 func TestIsSensitivePathSymlinkWorkspace(t *testing.T) {
 	realHome, err := filepath.EvalSymlinks(t.TempDir())
@@ -216,10 +242,23 @@ func TestIsSensitivePathSymlinkWorkspace(t *testing.T) {
 	if p := filepath.Join(realHome, ".ssh", "id_rsa"); !IsSensitivePath(p) {
 		t.Errorf("external credential should be sensitive: %s", p)
 	}
-	if filepath.Separator == '/' {
-		// Linux 临时目录同样命中系统目录黑名单，可覆盖 /var/home 场景且不写入系统家目录。
-		if !isSensitivePath(filepath.Join(realWorkspace+"-outside", "public.txt")) {
-			t.Fatal("workspace prefix sibling should remain sensitive")
+}
+
+// TestIsSensitivePathWorkspacePrefixBoundary 显式覆盖敏感父目录下的工作空间路径边界。
+func TestIsSensitivePathWorkspacePrefixBoundary(t *testing.T) {
+	parents := []string{"/tmp", "/var/home"}
+	if filepath.Separator == '\\' {
+		parents = []string{`C:\Windows\System32`}
+	}
+	originalWorkspace := WorkspaceDir
+	t.Cleanup(func() { WorkspaceDir = originalWorkspace })
+	for _, parent := range parents {
+		WorkspaceDir = filepath.Join(parent, "siyuan-test-workspace")
+		if isSensitivePath(filepath.Join(WorkspaceDir, "data", "public.txt")) {
+			t.Fatalf("workspace data should be allowed: %s", WorkspaceDir)
+		}
+		if !isSensitivePath(filepath.Join(WorkspaceDir+"-outside", "public.txt")) {
+			t.Fatalf("workspace prefix sibling should remain sensitive: %s", WorkspaceDir)
 		}
 	}
 }

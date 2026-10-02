@@ -1,4 +1,5 @@
 import {updateMenuItemGroupClasses} from "../../../menus/menuGroup";
+import {waitForSheetViewport} from "../../../menus/sheetOpen";
 
 export const bindMobileAVPanel = (panelElement: HTMLElement, menuElement: HTMLElement) => {
     menuElement.classList.add("b3-menu--fullscreen", "b3-menu--sheet");
@@ -9,6 +10,10 @@ export const bindMobileAVPanel = (panelElement: HTMLElement, menuElement: HTMLEl
         menuElement.style.height = Math.max(window.innerHeight, orientation?.height1 || 0) * .56 + "px";
     };
     const updateContent = () => {
+        // 抓手统一由 b3-menu__title 的伪元素绘制，与其它底部面板保持一致
+        if (!menuElement.firstElementChild?.classList.contains("b3-menu__title")) {
+            menuElement.insertAdjacentHTML("afterbegin", '<div class="b3-menu__title b3-menu__title--root"></div>');
+        }
         // 保留原有节点和事件绑定，标题的返回操作仍由数据库面板处理
         menuElement.querySelectorAll(".b3-menu__items, .av__select-list").forEach((itemsElement) => {
             const titleElement = itemsElement.firstElementChild;
@@ -45,6 +50,34 @@ export const bindMobileAVPanel = (panelElement: HTMLElement, menuElement: HTMLEl
     updateContent();
     observeContent();
     window.addEventListener("resize", updateHeight);
+    // 初始定位不参与过渡，确保展开动画从屏幕外开始
+    menuElement.style.transition = "none";
+    menuElement.style.transform = "translateY(100%)";
+    void menuElement.offsetHeight;
+    const size = window.siyuan.mobile.size;
+    const orientation = size.isLandscape ? size.landscape : size.portrait;
+    const cancelOpen = waitForSheetViewport({
+        height: () => Math.min(window.innerHeight, window.visualViewport?.height ?? window.innerHeight),
+        fullHeight: Math.max(window.innerHeight, orientation?.height1 || 0),
+        now: () => performance.now(),
+        requestFrame: callback => requestAnimationFrame(callback),
+        cancelFrame: id => cancelAnimationFrame(id),
+        open: () => {
+            if (panelElement.isConnected) {
+                updateHeight();
+                menuElement.style.transition = "";
+                void menuElement.offsetHeight;
+                menuElement.style.transform = "translateY(0px)";
+            }
+        },
+    });
+    menuElement.addEventListener("transitionend", (event) => {
+        // 展开后恢复视口定位参照，避免固定定位下拉列表受面板变换影响
+        if (event.target === menuElement && event.propertyName === "transform" &&
+            menuElement.style.transform === "translateY(0px)") {
+            menuElement.style.transform = "";
+        }
+    });
 
     let start: {x: number, y: number, time: number};
     let dragging = false;
@@ -59,8 +92,9 @@ export const bindMobileAVPanel = (panelElement: HTMLElement, menuElement: HTMLEl
     menuElement.addEventListener("touchstart", (event) => {
         reset();
         const target = event.target as HTMLElement;
+        // 可排序条目的触摸由拖拽桥接处理，避免向下排序时同时拖动整个面板。
         if (event.touches.length !== 1 ||
-            target.closest('input, textarea, select, [contenteditable="true"], .av__select-dropdown') ||
+            target.closest('input, textarea, select, [contenteditable="true"], .av__select-dropdown, [draggable="true"]') ||
             menuElement.querySelector(".av__select-dropdown")) {
             return;
         }
@@ -119,6 +153,7 @@ export const bindMobileAVPanel = (panelElement: HTMLElement, menuElement: HTMLEl
 
     const removalObserver = new MutationObserver(() => {
         if (!panelElement.isConnected) {
+            cancelOpen();
             contentObserver.disconnect();
             removalObserver.disconnect();
             window.removeEventListener("resize", updateHeight);

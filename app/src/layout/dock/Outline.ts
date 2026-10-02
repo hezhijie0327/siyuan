@@ -1,3 +1,5 @@
+import {bindPanelSearch} from "./panelSearch";
+import type {BlockBreadcrumbRequestInput} from "../../types/api";
 import {Tab} from "../Tab";
 import {Model} from "../Model";
 import {Tree} from "../../util/Tree";
@@ -16,7 +18,7 @@ import {
 import {openFileById} from "../../editor/util";
 import {Constants} from "../../constants";
 import {MenuItem} from "../../menus/Menu";
-import {escapeAttr, escapeHtml} from "../../util/escape";
+import {escapeHtml} from "../../util/escape";
 import {getFileTreeIconHTML} from "../../emoji/fileTreeIcon";
 import {getPreviousBlock} from "../../protyle/wysiwyg/getBlock";
 import type {App} from "../../index";
@@ -74,7 +76,7 @@ export class Outline extends Model {
         options.tab.panelElement.classList.add("fn__flex-column", "file-tree", "sy__outline", "dockPanel");
         options.tab.panelElement.innerHTML = `<div class="block__icons fn__hidescrollbar">
     <div class="block__logo fn__flex-1">${window.siyuan.languages.outline}</div>
-    <input class="b3-text-field search__label fn__none fn__size200" placeholder="${window.siyuan.languages.searchPlaceholder}" />
+    <input spellcheck="false" class="b3-text-field search__label fn__none fn__size200" placeholder="${window.siyuan.languages.searchPlaceholder}" />
     <span data-type="search" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.search}">
         <svg><use xlink:href='#iconSearch'></use></svg>
     </span>
@@ -86,14 +88,6 @@ export class Outline extends Model {
     <span data-type="expandLevel" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.expandLevel}">
         <svg><use xlink:href="#iconExpandLevel"></use></svg>
     </span>
-    <span class="fn__space"></span>
-    <span data-type="expand" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.expandAll}${updateHotkeyAfterTip(window.siyuan.config.keymap.editor.general.expand.custom)}">
-        <svg><use xlink:href="#iconExpand"></use></svg>
-    </span>
-    <span class="fn__space"></span>
-    <span data-type="collapse" class="block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.foldAll}${updateHotkeyAfterTip(window.siyuan.config.keymap.editor.general.collapse.custom)}">
-        <svg><use xlink:href="#iconContract"></use></svg>
-    </span>
     <span class="${this.type === "local" ? "fn__none " : ""}fn__space"></span>
     <span data-type="min" class="${this.type === "local" ? "fn__none " : ""}block__icon ariaLabel" data-position="north" aria-label="${window.siyuan.languages.min}${updateHotkeyAfterTip(window.siyuan.config.keymap.general.closeTab.custom)}">
         <svg><use xlink:href='#iconMin'></use></svg>
@@ -104,24 +98,10 @@ export class Outline extends Model {
         this.element = options.tab.panelElement.lastElementChild as HTMLElement;
         this.headerElement = options.tab.panelElement.firstElementChild as HTMLElement;
         const inputElement = this.headerElement.querySelector("input.b3-text-field.search__label") as HTMLInputElement;
-        inputElement.addEventListener("blur", () => {
-            inputElement.classList.add("fn__none");
-            const filterIconElement = inputElement.nextElementSibling as HTMLElement; // search 图标
-            const value = inputElement.value;
-            if (value) {
-                filterIconElement.classList.add("block__icon--active");
-                filterIconElement.setAttribute("aria-label", window.siyuan.languages.search + " " + escapeAttr(value));
-            } else {
-                filterIconElement.classList.remove("block__icon--active");
-                filterIconElement.setAttribute("aria-label", window.siyuan.languages.search);
-            }
-        });
-        inputElement.addEventListener("input", (event: InputEvent) => {
-            if (!event.isComposing) {
-                this.setFilter();
-            }
-        });
-        inputElement.addEventListener("compositionend", () => this.setFilter());
+        const showSearch = bindPanelSearch(inputElement,
+            this.headerElement.querySelector('[data-type="search"]'), () => this.setFilter(), {
+                trim: false,
+            });
         this.tree = new Tree({
             element: this.element,
             data: null,
@@ -210,18 +190,6 @@ export class Outline extends Model {
             blockExtHTML: window.siyuan.config.readonly ? undefined : '<span class="b3-list-item__action"><svg><use xlink:href="#iconMore"></use></svg></span>',
             topExtHTML: window.siyuan.config.readonly ? undefined : '<span class="b3-list-item__action"><svg><use xlink:href="#iconMore"></use></svg></span>',
         });
-        // 为了快捷键的 dispatch
-        options.tab.panelElement.querySelector('[data-type="collapse"]').addEventListener("click", () => {
-            this.tree.collapseAll();
-            this.saveExpendIds();
-        });
-
-        // 普通的全部展开按钮
-        options.tab.panelElement.querySelector('[data-type="expand"]').addEventListener("click", () => {
-            this.tree.expandAll();
-            this.saveExpendIds();
-        });
-
         // 保持当前标题展开功能
         options.tab.panelElement.querySelector('[data-type="keepCurrentExpand"]').addEventListener("click", (event: MouseEvent & {
             target: Element
@@ -271,8 +239,7 @@ export class Outline extends Model {
                             isFocus = false;
                             break;
                         case "search":
-                            inputElement.classList.remove("fn__none");
-                            inputElement.select();
+                            showSearch();
                             break;
                         case "expandLevel":
                             this.showExpandLevelMenu(target);
@@ -326,7 +293,7 @@ export class Outline extends Model {
             }
             this.update(response);
             if (this.blockId) {
-                this.updateDocTitle((options.tab.model as Editor)?.editor?.protyle?.background?.ial, response.data?.length || 0);
+                this.updateDocTitle((options.tab.model as Editor)?.editor?.protyle?.background?.ial, Array.isArray(response.data) ? response.data.length : 0);
             }
         });
     }
@@ -471,7 +438,14 @@ export class Outline extends Model {
                     if (selectItem.classList.contains("dragover")) {
                         parentID = selectItem.getAttribute("data-node-id");
                         if (selectItem.nextElementSibling && selectItem.nextElementSibling.tagName === "UL") {
-                            selectItem.nextElementSibling.insertAdjacentElement("afterbegin", item);
+                            const children = selectItem.nextElementSibling;
+                            const lastHeading = children.querySelector(":scope > li:last-of-type");
+                            previousID = lastHeading?.getAttribute("data-node-id");
+                            if (previousID === item.dataset.nodeId) {
+                                hasChange = false;
+                            } else {
+                                children.insertAdjacentElement("beforeend", item);
+                            }
                         } else {
                             selectItem.insertAdjacentHTML("afterend", `<ul>${item.outerHTML}</ul>`);
                             item.remove();
@@ -586,7 +560,7 @@ export class Outline extends Model {
                     return;
                 }
                 this.update(response);
-                this.updateDocTitle(null, response.data?.length || 0);
+                this.updateDocTitle(null, Array.isArray(response.data) ? response.data.length : 0);
                 // https://github.com/siyuan-note/siyuan/issues/8372
                 if (getSelection().rangeCount > 0) {
                     const blockElement = hasClosestBlock(getSelection().getRangeAt(0).startContainer);
@@ -621,7 +595,7 @@ export class Outline extends Model {
             if (previousElement) {
                 this.setCurrentById(previousElement.getAttribute("data-node-id"));
             } else {
-                const breadcrumbParam: Record<string, any> = {
+                const breadcrumbParam: BlockBreadcrumbRequestInput = {
                     id: nodeElement.getAttribute("data-node-id"),
                     excludeTypes: []
                 };
@@ -775,7 +749,7 @@ export class Outline extends Model {
                 return;
             }
             this.update(response);
-            this.updateDocTitle(protyle?.background?.ial, response.data?.length || 0);
+            this.updateDocTitle(protyle?.background?.ial, Array.isArray(response.data) ? response.data.length : 0);
         });
     }
 
@@ -911,6 +885,15 @@ export class Outline extends Model {
         setStorageVal(Constants.LOCAL_OUTLINE, window.siyuan.storage[Constants.LOCAL_OUTLINE]);
     }
 
+    public setAllExpanded(expanded: boolean) {
+        if (expanded) {
+            this.tree.expandAll();
+        } else {
+            this.tree.collapseAll();
+        }
+        this.saveExpendIds();
+    }
+
     /**
      * 显示展开层级菜单
      */
@@ -926,6 +909,21 @@ export class Outline extends Model {
                 click: () => this.expandToLevel(i)
             }).element);
         }
+        window.siyuan.menus.menu.append(new MenuItem({id: "separator_all", type: "separator"}).element);
+        window.siyuan.menus.menu.append(new MenuItem({
+            id: "expandAll",
+            icon: "iconExpand",
+            label: window.siyuan.languages.expandAll,
+            accelerator: window.siyuan.config.keymap.editor.general.expand.custom,
+            click: () => this.setAllExpanded(true)
+        }).element);
+        window.siyuan.menus.menu.append(new MenuItem({
+            id: "foldAll",
+            icon: "iconContract",
+            label: window.siyuan.languages.foldAll,
+            accelerator: window.siyuan.config.keymap.editor.general.collapse.custom,
+            click: () => this.setAllExpanded(false)
+        }).element);
         const rect = target.getBoundingClientRect();
         window.siyuan.menus.menu.popup({
             x: rect.left,
@@ -1179,7 +1177,10 @@ export class Outline extends Model {
                                 return;
                             }
                             let previousID = deleteResponse.data.doOperations[deleteResponse.data.doOperations.length - 1].id;
-                            deleteResponse.data.undoOperations.find((operationsItem: IOperation, index: number) => {
+                            deleteResponse.data.undoOperations.find((operationsItem, index: number) => {
+                                if (typeof operationsItem.data !== "string") {
+                                    return false;
+                                }
                                 const startIndex = operationsItem.data.indexOf(' data-subtype="h');
                                 if (index > 0 && startIndex > -1 && startIndex < 260 && parseInt(operationsItem.data.substring(startIndex + 16, startIndex + 17)) === currentLevel + 1) {
                                     previousID = deleteResponse.data.undoOperations[index - 1].id;
@@ -1249,7 +1250,8 @@ export class Outline extends Model {
                         fetchPost("/api/block/getHeadingDeleteTransaction", {
                             id,
                         }, async (deleteResponse) => {
-                            const deletedIDs = deleteResponse.data.doOperations.map(
+                            const headingTransaction: {doOperations: IOperation[], undoOperations: IOperation[]} = deleteResponse.data;
+                            const deletedIDs = headingTransaction.doOperations.map(
                                 (operation: IOperation) => operation.id);
                             if (!await confirmBlockRef({
                                 scope: "blocks",
@@ -1268,7 +1270,7 @@ export class Outline extends Model {
                             if (!data.protyle.wysiwyg.element.querySelector(`[data-node-id="${id}"]`)) {
                                 return;
                             }
-                            deleteResponse.data.doOperations.forEach((operation: IOperation) => {
+                            headingTransaction.doOperations.forEach((operation: IOperation) => {
                                 data.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
                                     itemElement.remove();
                                 });
@@ -1277,19 +1279,19 @@ export class Outline extends Model {
                                 const newID = Lute.NewNodeID();
                                 const emptyElement = genEmptyElement(false, false, newID);
                                 data.protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
-                                deleteResponse.data.doOperations.push({
+                                headingTransaction.doOperations.push({
                                     action: "insert",
                                     data: emptyElement.outerHTML,
                                     id: newID,
                                     parentID: data.protyle.block.parentID
                                 });
-                                deleteResponse.data.undoOperations.push({
+                                headingTransaction.undoOperations.push({
                                     action: "delete",
                                     id: newID,
                                 });
                                 focusBlock(emptyElement);
                             }
-                            transaction(data.protyle, deleteResponse.data.doOperations, deleteResponse.data.undoOperations);
+                            transaction(data.protyle, headingTransaction.doOperations, headingTransaction.undoOperations);
                         });
                     });
                 }
@@ -1305,7 +1307,8 @@ export class Outline extends Model {
                     fetchPost("/api/block/getHeadingDeleteTransaction", {
                         id,
                     }, async (response) => {
-                        const deletedIDs = response.data.doOperations.map((operation: IOperation) => operation.id);
+                        const headingTransaction: {doOperations: IOperation[], undoOperations: IOperation[]} = response.data;
+                        const deletedIDs = headingTransaction.doOperations.map((operation: IOperation) => operation.id);
                         if (!await confirmBlockRef({
                             scope: "blocks",
                             ids: deletedIDs,
@@ -1317,7 +1320,7 @@ export class Outline extends Model {
                         if (!data.protyle.wysiwyg.element.querySelector(`[data-node-id="${id}"]`)) {
                             return;
                         }
-                        response.data.doOperations.forEach((operation: IOperation) => {
+                        headingTransaction.doOperations.forEach((operation: IOperation) => {
                             data.protyle.wysiwyg.element.querySelectorAll(`[data-node-id="${operation.id}"]`).forEach((itemElement: HTMLElement) => {
                                 itemElement.remove();
                             });
@@ -1326,19 +1329,19 @@ export class Outline extends Model {
                             const newID = Lute.NewNodeID();
                             const emptyElement = genEmptyElement(false, false, newID);
                             data.protyle.wysiwyg.element.insertAdjacentElement("afterbegin", emptyElement);
-                            response.data.doOperations.push({
+                            headingTransaction.doOperations.push({
                                 action: "insert",
                                 data: emptyElement.outerHTML,
                                 id: newID,
                                 parentID: data.protyle.block.parentID
                             });
-                            response.data.undoOperations.push({
+                            headingTransaction.undoOperations.push({
                                 action: "delete",
                                 id: newID,
                             });
                             focusBlock(emptyElement);
                         }
-                        transaction(data.protyle, response.data.doOperations, response.data.undoOperations);
+                        transaction(data.protyle, headingTransaction.doOperations, headingTransaction.undoOperations);
                     });
                 }
             }).element);
@@ -1386,10 +1389,7 @@ export class Outline extends Model {
             id: "expandAll",
             icon: "iconExpand",
             label: window.siyuan.languages.expandAll,
-            click: () => {
-                this.tree.expandAll();
-                this.saveExpendIds();
-            }
+            click: () => this.setAllExpanded(true)
         }).element);
 
         // 全部折叠
@@ -1397,15 +1397,14 @@ export class Outline extends Model {
             id: "foldAll",
             icon: "iconContract",
             label: window.siyuan.languages.foldAll,
-            click: () => {
-                this.tree.collapseAll();
-                this.saveExpendIds();
-            }
+            click: () => this.setAllExpanded(false)
         }).element);
 
+        const rect = element.getBoundingClientRect();
         window.siyuan.menus.menu.popup({
             x: event.clientX,
-            y: event.clientY
+            y: rect.bottom,
+            h: rect.height,
         });
     }
 

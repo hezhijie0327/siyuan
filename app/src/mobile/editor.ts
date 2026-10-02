@@ -1,3 +1,4 @@
+import type {FileTreeGetDocRequestInput} from "../types/api";
 import {Protyle} from "../protyle";
 import {setEditor} from "./util/setEmpty";
 import {closePanel} from "./util/closePanel";
@@ -6,6 +7,7 @@ import {fetchPost} from "../util/fetch";
 import {onGet} from "../protyle/util/onGet";
 import {addLoading} from "../protyle/ui/initUI";
 import {highlightById, scrollCenter} from "../util/highlightById";
+import {resolveVisibleListMindmapBlock} from "../protyle/render/listMindmap/render";
 import {isInEmbedBlock} from "../protyle/util/hasClosest";
 import {setEditMode} from "../protyle/util/setEditMode";
 import {hideElements} from "../protyle/ui/hideElements";
@@ -17,11 +19,12 @@ import {getDocByScroll, saveScroll} from "../protyle/scroll/saveScroll";
 import {isEncryptedBox} from "../util/pathName";
 import {bindMobileBarsScroll, pauseMobileBarsScroll} from "./util/mobileBars";
 import {forEachPluginSubscriber} from "../plugin/EventBusCore";
-import {restoreMobileTopBarLayout, updateMobileTopBarLayout} from "./util/mobileTopBar";
+import {restoreMobileTopBarLayout} from "./util/mobileTopBar";
 import {stickyRow} from "../protyle/render/av/row";
 import {invalidateTrackedRanges} from "../protyle/util/trackedRange";
 import {getActiveMobileSecondaryEditor} from "./util/secondaryEditors";
 import {closeMobileBacklinkSheets} from "./util/backlinkPanels";
+import {closeAVCellEditor} from "../protyle/render/av/cellEditor";
 
 export const getCurrentEditor = () => {
     return getActiveMobileSecondaryEditor() || window.siyuan.mobile.popEditor || window.siyuan.mobile.editor;
@@ -68,12 +71,13 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
                                    scrollAttr?: IScrollAttr, updateRecent = true,
                                    onFailure?: (invalid?: boolean) => void) => {
     let completed = false;
+    let titleHidden = false;
     const complete = (protyle: IProtyle) => {
         if (completed) {
             return;
         }
         completed = true;
-        updateMobileTopBarLayout();
+        setEditor();
         bindMobileBarsScroll(protyle.contentElement, () => {
             // 面包屑位移后同步数据库吸顶位置，避免数据库使用上一帧的面包屑位置
             protyle.wysiwyg.element.querySelectorAll(".av[data-render='true']").forEach((item: HTMLElement) => {
@@ -84,18 +88,30 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
             void window.siyuan.mobile.docks.file?.selectOpenedFile(protyle.notebookId, protyle.path);
         }
         afterOpen?.(protyle);
+        const titleElement = document.getElementById("toolbarName") as HTMLInputElement;
+        if (isValid() && action.includes(Constants.CB_GET_OPENNEW) && !protyle.disabled &&
+            titleElement && !titleElement.readOnly && !titleElement.disabled) {
+            // 新建文档加载完成后聚焦标题，通过移动端焦点桥接唤起键盘。
+            protyle.contentElement.scrollTop = 0;
+            titleElement.focus({preventScroll: true});
+            titleElement.setSelectionRange(titleElement.value.length, titleElement.value.length);
+        }
     };
     const fail = (invalid = false) => {
         if (completed) {
             return;
         }
         completed = true;
+        if (titleHidden && isValid() && window.siyuan.mobile.editor?.protyle.wysiwyg.element.childElementCount > 0) {
+            setEditor();
+        }
         onFailure?.(invalid);
     };
     if (!isValid()) {
         fail();
         return;
     }
+    closeAVCellEditor();
     const avPanelElement = document.querySelector(".av__panel");
     if (avPanelElement && !avPanelElement.classList.contains("fn__none")) {
         avPanelElement.dispatchEvent(new CustomEvent("click", {detail: "close"}));
@@ -114,9 +130,11 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
             }
         });
         const protyle = window.siyuan.mobile.editor.protyle;
+        const visibleMindmap = blockElement && resolveVisibleListMindmapBlock(blockElement);
         const shouldReload = forceReload ||
             (action.includes(Constants.CB_GET_ALL) && (!protyle.block.showAll || protyle.block.id !== id)) ||
-            blockElement?.clientHeight === 0;
+            (visibleMindmap === undefined ? blockElement?.clientHeight === 0 :
+                visibleMindmap ? visibleMindmap.scrollElement.clientHeight === 0 : false);
         if (blockElement && !shouldReload) {
             if (action.includes(Constants.CB_GET_HL)) {
                 highlightById(protyle, id, scrollPosition);
@@ -140,7 +158,7 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
     }
 
     const targetNotebookId = notebookId || window.siyuan.mobile.editor?.protyle?.notebookId;
-    const blockInfoParam: IObject = {id};
+    const blockInfoParam: {id: string; notebook?: string} = {id};
     if (isEncryptedBox(targetNotebookId)) {
         blockInfoParam.notebook = targetNotebookId;
     }
@@ -197,20 +215,22 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
                 complete(editor.protyle);
             },
         };
+        setEditor(false);
+        titleHidden = true;
         if (window.siyuan.mobile.editor) {
             invalidateTrackedRanges(window.siyuan.mobile.editor.protyle);
             window.siyuan.mobile.editor.protyle.notebookId = data.data.box;
             window.siyuan.mobile.editor.protyle.title.element.removeAttribute("data-render");
             addLoading(window.siyuan.mobile.editor.protyle);
-            if (previousRootID !== data.data.rootID) {
-                window.siyuan.mobile.editor.protyle.wysiwyg.element.innerHTML = "";
-            }
+            // 保留正文直到新文档返回，跨文档切换时显式更新只读状态
+            const updateReadonly = previousRootID !== data.data.rootID ? true : undefined;
             const targetScrollAttr = scrollAttr || window.siyuan.storage[Constants.LOCAL_FILEPOSITION][data.data.rootID];
             if (actionList.includes(Constants.CB_GET_SCROLL) && targetScrollAttr) {
                 getDocByScroll({
                     protyle: window.siyuan.mobile.editor.protyle,
                     scrollAttr: targetScrollAttr,
                     mergedOptions: protyleOptions,
+                    updateReadonly,
                     signal,
                     fail,
                     isValid,
@@ -229,7 +249,7 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
                     }
                 });
             } else {
-                const getDocParam: IObject = {
+                const getDocParam: FileTreeGetDocRequestInput = {
                     id,
                     includeDocInfo: true,
                     size: actionList.includes(Constants.CB_GET_ALL) ? Constants.SIZE_GET_MAX : window.siyuan.config.editor.dynamicLoadBlocks,
@@ -254,6 +274,7 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
                             data: getResponse,
                             protyle: window.siyuan.mobile.editor.protyle,
                             action: actionList,
+                            updateReadonly,
                             scrollPosition,
                             isValid,
                             afterCB() {
@@ -295,7 +316,6 @@ export const loadMobileFileById = (app: App, id: string, action: TProtyleAction[
                 return;
             }
         }
-        setEditor();
         closePanel();
     }, undefined, undefined, signal).then(() => {
         if (!blockInfoHandled) {
