@@ -256,7 +256,8 @@ var (
 	systemHomeDir, _  = gulu.OS.Home()
 	HomeDir           = systemHomeDir
 	homeDirOverridden bool
-	WorkingDir, _     = os.Getwd()
+  ExecPath, _       = os.Executable()
+	WorkingDir, _     = filepath.Dir(ExecPath)
 
 	WorkspaceDir       string        // 工作空间目录路径
 	WorkspaceName      string        // 工作空间名称
